@@ -18,7 +18,8 @@ This application is a lightweight, single-file solution that manages your **Inve
 * **Wife-Approved Layout:** Includes line-item breakdowns, technical specs (layer height/material), and care instructions for your customers.
 * **Smart-Save:** Automatically detects OneDrive to ensure receipts are saved safely in `Documents/3D_Print_Receipts`.
 
-> **[INSERT SCREENSHOT OF YOUR NEW RECEIPT HERE]**
+> <img width="518" height="546" alt="Screenshot 2025-12-10 122953" src="https://github.com/user-attachments/assets/dcf40c66-e8eb-4003-b442-a0eaf8cde898" />
+
 
 ### 📦 Intelligent Inventory System
 * **Live Tracking:** Automatically subtracts grams from your spools when you finish a job.
@@ -68,4 +69,5 @@ This app uses a "Clean Desktop" philosophy.
 
 ## ⚖️ License
 Free to use for personal or commercial printing businesses. Happy Printing!
+
 
