@@ -62,3 +62,27 @@ If you want to modify the code and build your own executable, use this command t
 
 ```bash
 pyinstaller --noconsole --onefile --name="PrintShopManager" --add-data "*.png;." print_manager.py
+```
+
+## 📂 Where is my Data?
+Inventory & History: %LOCALAPPDATA%\PrintShopManager\
+Receipts: Documents\3D_Print_Receipts (Auto-detects OneDrive).
+
+⚖️ License
+Free to use for personal or commercial printing businesses. Happy Printing!
+
+
+---
+
+### 2. Git Commands to Update
+Open your terminal in your project folder and run these commands to push the new version to GitHub.
+
+```bash
+# 1. Stage all changes (script + new README)
+git add .
+
+# 2. Commit with a strong message
+git commit -m "Update to v4.0: Added Smart Search, Troubleshooting Guide, and Bambu Profiles"
+
+# 3. Push to GitHub
+git push origin main
