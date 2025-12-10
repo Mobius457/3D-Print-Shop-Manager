@@ -39,7 +39,7 @@ This application is a lightweight, single-file solution that manages your **Inve
 2.  Ensure you have Python installed.
 3.  Run the script:
     ```bash
-    python print_manager_v6.py
+    python print_manager.py
     ```
 
 ---
@@ -53,7 +53,7 @@ This application is a lightweight, single-file solution that manages your **Inve
 
 2.  **Run the build command:**
     ```bash
-    pyinstaller --noconsole --onefile --name="PrintShopManager" print_manager_v6.py
+    pyinstaller --noconsole --onefile --name="PrintShopManager" print_manager.py
     ```
 
 ---
@@ -66,4 +66,5 @@ This app uses a "Clean Desktop" philosophy.
 ---
 
 ## ⚖️ License
+
 Free to use for personal or commercial printing businesses. Happy Printing!
