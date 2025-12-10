@@ -1,54 +1,46 @@
-# 3D Print Shop Manager 🚀 (v4.0)
+# 3D Print Shop Manager 🚀
 
 **The ultimate "All-in-One" tool for 3D printing hobbyists, small businesses, and beginners.**
 
 Stop guessing your prices. Stop failing prints. Stop losing track of your inventory.
 
-This application is a lightweight, single-file solution that combines a **Business Manager** (Inventory, Quoting, Receipts) with a complete **3D Printing Field Manual** (Troubleshooting, Material Guides, Hardware Maintenance).
+This application is a lightweight, single-file solution that combines a **Business Manager** (Inventory, Quoting, Receipts) with a complete **3D Printing Field Manual** (Maintenance Tracking, Troubleshooting, Material Guides).
 
 ---
 
-## ✨ New in v4.0: The "Field Manual" Update
+## ✨ Key Features
+
+### 🛠️ Maintenance Tracker (New!)
+* **Live Logging:** Track exactly when you last cleaned your bed, greased Z-rods, or tightened belts.
+* **Persistent Data:** Remembers your maintenance history even after you restart the app.
 
 ### 🧠 Smart Search & Diagnostics
 * **Fuzzy Logic Search:** Type "pop", "click", or "stringing" and the app instantly finds the relevant guide, even if you make a typo.
-* **Multi-Hit Detection:** If your search term appears in multiple guides (e.g., "Clog"), the app jumps to the best match but notifies you of other relevant sections.
+* **Multi-Hit Detection:** If a problem has multiple causes, the app points you to the best fix but lists other possibilities.
 
-### 📚 The Expert Knowledge Base
+### 📚 Expert Knowledge Base
 * **First Layer "Holy Grail":** A dedicated guide to mastering Z-Offset vs. Leveling.
-* **Material Database:** Deep dives on PLA, PETG, TPU, ABS/ASA, and Silk PLA (Temps, Fan Speeds, Enclosure rules).
+* **Material Database:** Deep dives on PLA, PETG, TPU, ABS/ASA, and Silk PLA.
 * **Bambu Lab Profiles:** Specific tips for X1/P1/A1 users (Grid Infill warnings, AMS compatibility).
-* **Hardware Maintenance:** Monthly checklists for Eccentric Nuts, Belts, and Z-Rods.
-
----
-
-## 🛠️ Key Features
 
 ### 💰 Professional Quoting Engine
 * **Smart Calculator:** Input material cost, print time, and markup to get a sell price instantly.
-* **Overhead Calculation:** Automatically accounts for electricity, machine wear, and waste.
-* **Pro Receipts:** Generates beautiful text-file invoices saved to `Documents/3D_Print_Receipts`.
-> <img width="518" height="546" alt="Screenshot 2025-12-10 122953" src="https://github.com/user-attachments/assets/dcf40c66-e8eb-4003-b442-a0eaf8cde898" />
-
-
-### 📦 Intelligent Inventory System
-* **Live Tracking:** Subtract grams from spools as you print.
-* **Visual Alerts:** 🟡 Yellow (Low Stock) and 🔴 Red (Critical) indicators.
-* **Price Check:** One-click Google Shopping search for selected filaments.
+* **Pro Receipts:** Generates beautiful text-file invoices saved to your Documents folder.
 
 ---
 
 ## 🚀 How to Install & Use
 
 ### Option 1: The Easy Way (.exe)
-1.  Download `PrintShopManager.exe` from the **Releases** page.
+1.  Download `PrintShopManager.exe` from the **Releases** page on the right.
 2.  Double-click to run. (No installation required).
 
 ### Option 2: Run from Source (Python)
+If you want to run the raw code:
 1.  Clone this repository.
 2.  Install the required image library:
     ```bash
-    pip install Pillow
+    pip install -r requirements.txt
     ```
 3.  Run the script:
     ```bash
@@ -58,31 +50,21 @@ This application is a lightweight, single-file solution that combines a **Busine
 ---
 
 ## 🏗️ How to Build the EXE (For Developers)
-If you want to modify the code and build your own executable, use this command to ensure the Images and Pillow library are bundled correctly:
+To compile the script into a standalone executable, use the following command. This ensures the reference image is bundled correctly inside the file.
 
 ```bash
-pyinstaller --noconsole --onefile --name="PrintShopManager" --add-data "*.png;." print_manager.py
+pyinstaller --noconsole --onefile --name="PrintShopManager" --add-data "spool_reference.png;." print_manager.py
 ```
-
-## 📂 Where is my Data?
-Inventory & History: %LOCALAPPDATA%\PrintShopManager\
-Receipts: Documents\3D_Print_Receipts (Auto-detects OneDrive).
-
-⚖️ License
-Free to use for personal or commercial printing businesses. Happy Printing!
-
 
 ---
 
-### 2. Git Commands to Update
-Open your terminal in your project folder and run these commands to push the new version to GitHub.
+## 📂 Where is my Data?
+This app uses a "Clean Desktop" philosophy.
 
-```bash
-# 1. Stage all changes (script + new README)
-git add .
+Inventory & History: Saved in %LOCALAPPDATA%\PrintShopManager\
 
-# 2. Commit with a strong message
-git commit -m "Update to v4.0: Added Smart Search, Troubleshooting Guide, and Bambu Profiles"
+Receipts: Saved in Documents\3D_Print_Receipts (Auto-detects OneDrive).
 
-# 3. Push to GitHub
-git push origin main
+## ⚖️ License
+Free to use for personal or commercial printing businesses. Happy Printing!
+
