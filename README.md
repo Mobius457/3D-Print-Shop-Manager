@@ -13,20 +13,19 @@ This application is a lightweight, single-file solution that manages your **Inve
 * **Multi-Color Support:** Perfect for Bambu Lab AMS or Mosaic Palette users. Mix 4+ colors in a single quote.
 * **Overhead Calculation:** Automatically accounts for electricity, machine wear-and-tear, and waste (poop/purge lines).
 
+### 🧾 Professional Invoicing (New in v9!)
+* **Automated Receipts:** Generates beautiful, text-based invoices automatically.
+* **Wife-Approved Layout:** Includes line-item breakdowns, technical specs (layer height/material), and care instructions for your customers.
+* **Smart-Save:** Automatically detects OneDrive to ensure receipts are saved safely in `Documents/3D_Print_Receipts`.
+
+> **[INSERT SCREENSHOT OF YOUR NEW RECEIPT HERE]**
+
 ### 📦 Intelligent Inventory System
 * **Live Tracking:** Automatically subtracts grams from your spools when you finish a job.
 * **Visual Low-Stock Alerts:**
     * 🟡 **Yellow:** Low Stock (< 200g)
     * 🔴 **Red:** Critical Stock (< 50g)
 * **One-Click Price Search:** Don't know what a spool costs? Click "🔍 Check Price Online" to instantly query Google Shopping.
-
-### 📄 Sales & Receipts
-* **Automatic History Log:** Keeps a permanent record of every print you've ever sold, including profit margins.
-* **Instant Invoices:** Generates professional text-file receipts automatically saved to your `Documents/3D_Print_Receipts` folder.
-* **Bulletproof Saving:** Intelligently detects OneDrive/Windows folder structures to ensure your data never gets lost.
-
-### ℹ️ Built-in References
-* Includes a visual **"Cheat Sheet"** to help you estimate how much filament is left on a partial spool without unspooling it.
 
 ---
 
@@ -43,7 +42,6 @@ This application is a lightweight, single-file solution that manages your **Inve
     ```bash
     python print_manager.py
     ```
-    *(Note: Update the filename if your version differs)*
 
 ---
 
@@ -62,10 +60,9 @@ This application is a lightweight, single-file solution that manages your **Inve
 ---
 
 ## 📂 Where is my Data?
-This app uses a "Clean Desktop" philosophy. It does not clutter your desktop with data files.
-
-* **Inventory & History:** Saved in `%LOCALAPPDATA%\PrintShopManager\` (Hidden Windows System Folder).
-* **Receipts:** Saved in `Documents\3D_Print_Receipts`.
+This app uses a "Clean Desktop" philosophy.
+* **Inventory & History:** Saved in `%LOCALAPPDATA%\PrintShopManager\`
+* **Receipts:** Saved in `Documents\3D_Print_Receipts` (Auto-detects OneDrive paths).
 
 ---
 
