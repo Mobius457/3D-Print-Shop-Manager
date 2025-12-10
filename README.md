@@ -13,7 +13,7 @@ This application is a lightweight, single-file solution that manages your **Inve
 * **Multi-Color Support:** Perfect for Bambu Lab AMS or Mosaic Palette users. Mix 4+ colors in a single quote.
 * **Overhead Calculation:** Automatically accounts for electricity, machine wear-and-tear, and waste (poop/purge lines).
 
-### 🧾 Professional Invoicing (New in v9!)
+### 🧾 Professional Invoicing (New in v3!)
 * **Automated Receipts:** Generates beautiful, text-based invoices automatically.
 * **Wife-Approved Layout:** Includes line-item breakdowns, technical specs (layer height/material), and care instructions for your customers.
 * **Smart-Save:** Automatically detects OneDrive to ensure receipts are saved safely in `Documents/3D_Print_Receipts`.
@@ -68,3 +68,4 @@ This app uses a "Clean Desktop" philosophy.
 
 ## ⚖️ License
 Free to use for personal or commercial printing businesses. Happy Printing!
+
