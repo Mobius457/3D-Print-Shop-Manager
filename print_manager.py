@@ -1,15 +1,16 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
 import json
 import os
 import sys
 import shutil
 import subprocess
 import webbrowser
+import ctypes.wintypes # Added for the OneDrive fix
 from datetime import datetime
 
 # ======================================================
-# PATH SETUP
+# PATH SETUP (FIXED FOR ONEDRIVE)
 # ======================================================
 
 APP_NAME = "PrintShopManager"
@@ -25,23 +26,26 @@ if not os.path.exists(DATA_DIR):
 DB_FILE = os.path.join(DATA_DIR, "filament_inventory.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "sales_history.json")
 
-def get_receipts_folder():
-    user_home = os.path.expanduser("~")
-    candidates = [
-        os.path.join(user_home, "Documents", "3D_Print_Receipts"),
-        os.path.join(user_home, "OneDrive", "Documents", "3D_Print_Receipts"),
-        os.path.join(user_home, "Desktop", "3D_Print_Receipts"),
-        os.path.join(DATA_DIR, "Receipts")
-    ]
-    for path in candidates:
-        try:
-            os.makedirs(path, exist_ok=True)
-            return path
-        except OSError:
-            continue
-    return os.getcwd()
+def get_real_windows_docs_path():
+    """Reliably finds the Documents folder, asking Windows directly."""
+    try:
+        CSIDL_PERSONAL = 5       # Code for "My Documents"
+        SHGFP_TYPE_CURRENT = 0   # Get current path
+        buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+        ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_PERSONAL, None, SHGFP_TYPE_CURRENT, buf)
+        return buf.value
+    except:
+        return os.path.join(os.path.expanduser("~"), "Documents")
 
-DOCS_DIR = get_receipts_folder()
+# Set the Receipt Folder using the robust method
+DOCS_DIR = os.path.join(get_real_windows_docs_path(), "3D_Print_Receipts")
+if not os.path.exists(DOCS_DIR):
+    try:
+        os.makedirs(DOCS_DIR, exist_ok=True)
+    except OSError:
+        # Emergency fallback to Desktop if permissions fail
+        DOCS_DIR = os.path.join(os.path.expanduser("~"), "Desktop", "3D_Print_Receipts")
+        os.makedirs(DOCS_DIR, exist_ok=True)
 
 def resource_path(relative_path):
     try: base_path = sys._MEIPASS
@@ -55,8 +59,7 @@ IMAGE_FILE = resource_path("spool_reference.png")
 class FilamentManagerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("3D Print Shop Manager (v8.0)")
-        # Start slightly larger to accommodate font size
+        self.root.title("3D Print Shop Manager (v9.0 Fixed)")
         self.root.geometry("900x900")
 
         self.inventory = self.load_json(DB_FILE)
@@ -67,22 +70,16 @@ class FilamentManagerApp:
         self.editing_index = None
 
         # --- UI POLISH: FONTS & STYLES ---
-        # Set a global font for all widgets
-        self.main_font = ("Segoe UI", 12) # "Segoe UI" is standard for modern Windows
+        self.main_font = ("Segoe UI", 12)
         self.bold_font = ("Segoe UI", 12, "bold")
         
         style = ttk.Style()
-        style.theme_use('clam') # 'clam' usually looks cleaner than default on Windows
-        
-        # Apply font to everything
+        style.theme_use('clam')
         style.configure(".", font=self.main_font)
-        style.configure("Treeview", font=self.main_font, rowheight=30) # Taller rows for list
+        style.configure("Treeview", font=self.main_font, rowheight=30)
         style.configure("Treeview.Heading", font=self.bold_font)
-        style.configure("TLabelframe.Label", font=self.bold_font) # Bold Frame Titles
-
-        # Treeview Colors
+        style.configure("TLabelframe.Label", font=self.bold_font)
         style.map("Treeview", foreground=[('selected', 'black')], background=[('selected', '#3498db')])
-        # ---------------------------------
 
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(expand=True, fill="both")
@@ -126,25 +123,20 @@ class FilamentManagerApp:
             shutil.copy(DB_FILE, save_path)
             messagebox.showinfo("Backup", f"Saved to:\n{save_path}")
 
-    # --- TAB 1: CALCULATOR (RE-DESIGNED) ---
+    # --- TAB 1: CALCULATOR ---
     def build_calculator_tab(self):
-        # Main container with less padding
         frame = ttk.Frame(self.tab_calc, padding=10)
         frame.pack(fill="both", expand=True)
 
-        # 1. Job Name (Stays at top, doesn't expand)
         name_frame = ttk.LabelFrame(frame, text=" Job Details ", padding=10)
         name_frame.pack(fill="x", pady=5)
         ttk.Label(name_frame, text="Job Name:").pack(side="left", padx=5)
         self.entry_job_name = ttk.Entry(name_frame, width=30)
         self.entry_job_name.pack(side="left", padx=5, fill="x", expand=True)
 
-        # 2. Filament Input (Stays at top)
         sel_frame = ttk.LabelFrame(frame, text=" Add Filament ", padding=10)
         sel_frame.pack(fill="x", pady=5)
-        
-        # Grid layout for inputs to align them nicely
-        sel_frame.columnconfigure(1, weight=1) # Make combo box expandable
+        sel_frame.columnconfigure(1, weight=1)
         
         ttk.Label(sel_frame, text="Spool:").grid(row=0, column=0, padx=5, sticky="e")
         self.combo_filaments = ttk.Combobox(sel_frame, state="readonly")
@@ -156,44 +148,31 @@ class FilamentManagerApp:
         
         ttk.Button(sel_frame, text="Add Color", command=self.add_to_job).grid(row=0, column=4, padx=10)
 
-        # 3. The Job List (THIS IS THE ELASTIC PART)
-        # We put this in a frame that expands to fill all available space
         list_container = ttk.Frame(frame)
         list_container.pack(fill="both", expand=True, pady=5)
-        
-        # Scrollbar for the list
         scrollbar = ttk.Scrollbar(list_container)
         scrollbar.pack(side="right", fill="y")
-        
         self.list_job = tk.Listbox(list_container, font=self.main_font, height=6, yscrollcommand=scrollbar.set)
         self.list_job.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.list_job.yview)
         
         ttk.Button(list_container, text="Clear List", command=self.clear_job).pack(anchor="ne")
 
-        # 4. Settings (Stays at bottom)
         set_frame = ttk.LabelFrame(frame, text=" Settings ", padding=10)
         set_frame.pack(fill="x", pady=5)
-        
         ttk.Label(set_frame, text="Hrs:").pack(side="left", padx=5)
         self.entry_hours = ttk.Entry(set_frame, width=6); self.entry_hours.pack(side="left", padx=5)
-        
         ttk.Label(set_frame, text="Waste %:").pack(side="left", padx=5)
         self.entry_waste = ttk.Entry(set_frame, width=6); self.entry_waste.insert(0, "20"); self.entry_waste.pack(side="left", padx=5)
-        
         ttk.Label(set_frame, text="Markup:").pack(side="left", padx=5)
         self.entry_markup = ttk.Entry(set_frame, width=6); self.entry_markup.insert(0, "2.0"); self.entry_markup.pack(side="left", padx=5)
 
-        # 5. Actions & Results (Stays at bottom)
         btn_frame = ttk.Frame(frame, padding=10)
         btn_frame.pack(fill="x", pady=5)
-        
         self.btn_calc = ttk.Button(btn_frame, text="CALCULATE", command=self.calculate_quote)
         self.btn_calc.pack(side="left", padx=5, fill="x", expand=True)
-        
-        self.btn_receipt = ttk.Button(btn_frame, text="💾 Receipt", command=self.generate_receipt, state="disabled")
+        self.btn_receipt = ttk.Button(btn_frame, text="💾 Save Pro Receipt", command=self.generate_receipt, state="disabled")
         self.btn_receipt.pack(side="left", padx=5, fill="x", expand=True)
-        
         ttk.Button(btn_frame, text="📂 Folder", command=self.open_receipt_folder).pack(side="left", padx=5)
 
         self.result_var = tk.StringVar()
@@ -245,18 +224,72 @@ class FilamentManagerApp:
             self.btn_receipt.config(state="normal")
         except ValueError: pass
 
+    # ======================================================
+    # NEW "PRO" RECEIPT GENERATOR
+    # ======================================================
     def generate_receipt(self):
-        job = self.entry_job_name.get() or "Custom_Print"
-        clean = "".join([c for c in job if c.isalnum() or c in (' ', '-', '_')]).strip()
-        date = datetime.now().strftime("%Y-%m-%d")
-        path = os.path.join(DOCS_DIR, f"{date}_{clean}.txt")
+        # 1. Gather Data
+        job_name = self.entry_job_name.get() or "Custom Print Job"
+        customer_name = simpledialog.askstring("Receipt Details", "Customer Name (or blank):") or "Valued Customer"
+        
+        clean_name = "".join([c for c in job_name if c.isalnum() or c in (' ', '-', '_')]).strip()
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        time_str = datetime.now().strftime("%H:%M")
+        invoice_id = datetime.now().strftime("%Y%m%d-%H%M")
+        
+        filename = f"Invoice_{date_str}_{clean_name}.txt"
+        filepath = os.path.join(DOCS_DIR, filename)
+
+        # 2. Build the Content
+        lines = [
+            "=" * 60,
+            f"{'3D PRINT SHOP MANAGER':^60}",
+            "=" * 60,
+            f"INVOICE #:   {invoice_id}",
+            f"DATE:        {date_str}  |  {time_str}",
+            f"CUSTOMER:    {customer_name}",
+            "-" * 60,
+            f"{'DESCRIPTION':<35} {'GRAMS':<8} {'COST':>15}",
+            "-" * 60
+        ]
+
+        # Add Filaments
+        for item in self.current_job_filaments:
+            spool_name = f"{item['spool']['name']} ({item['spool']['color']})"
+            # Note: We don't show individual filament cost to customer, usually, 
+            # but we list them as line items. 
+            lines.append(f"{spool_name:<35} {item['grams']:<8.1f}")
+        
+        # Add Service Details
         try:
-            with open(path, "w") as f:
-                f.write(f"INVOICE\nDate: {date}\nItem: {job}\n\nBreakdown:\n")
-                for item in self.current_job_filaments: f.write(f" - {item['spool']['name']} ({item['spool']['color']}): {item['grams']}g\n")
-                f.write(f"\nTotal: ${self.last_calculated_price:.2f}")
-            messagebox.showinfo("Saved", f"Receipt Saved!\n\nLocation:\n{path}")
-        except Exception as e: messagebox.showerror("Error", str(e))
+            hrs = self.entry_hours.get()
+            lines.append(f"{'Print Service & Labor':<35} {hrs + 'h':<8}")
+        except: pass
+
+        lines.extend([
+            "-" * 60,
+            f"{'GRAND TOTAL:':<45} ${self.last_calculated_price:>13.2f}",
+            "=" * 60,
+            "",
+            "PAYMENT TERMS: Due upon receipt",
+            "-" * 60,
+            "CARE & HANDLING:",
+            "* Heat Sensitive: Do not leave in hot cars (>50°C).",
+            "* Cleaning: Cool soapy water only.",
+            "* Safety: Small parts may be a choking hazard.",
+            "",
+            f"{'Thank you for your business!':^60}",
+            "=" * 60,
+        ])
+
+        # 3. Save and Open
+        try:
+            with open(filepath, "w", encoding='utf-8') as f:
+                f.write("\n".join(lines))
+            messagebox.showinfo("Success", f"Receipt Saved!\n{filepath}")
+            os.startfile(filepath)
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
 
     def open_receipt_folder(self):
         try: os.startfile(DOCS_DIR)
@@ -273,16 +306,14 @@ class FilamentManagerApp:
             messagebox.showinfo("Success", "Updated!")
             self.clear_job()
 
-    # --- TAB 2: INVENTORY (ELASTIC) ---
+    # --- TAB 2: INVENTORY ---
     def build_inventory_tab(self):
         frame = ttk.Frame(self.tab_inventory, padding=10)
         frame.pack(fill="both", expand=True)
 
-        # Input Frame (Static at top)
         self.input_frame = ttk.LabelFrame(frame, text=" Add New Spool ", padding=10)
         self.input_frame.pack(fill="x", pady=5)
         
-        # Using grid for better alignment
         ttk.Label(self.input_frame, text="Name:").grid(row=0, column=0, padx=5, sticky="e")
         self.inv_name = ttk.Entry(self.input_frame, width=15); self.inv_name.grid(row=0, column=1, padx=5, sticky="ew")
         
@@ -303,7 +334,6 @@ class FilamentManagerApp:
 
         self.btn_cancel_edit = ttk.Button(self.input_frame, text="Cancel", command=self.cancel_edit)
 
-        # List Frame (Elastic - Fills space)
         list_frame = ttk.LabelFrame(frame, text=" Stock ", padding=10)
         list_frame.pack(fill="both", expand=True, pady=10)
         
@@ -312,7 +342,6 @@ class FilamentManagerApp:
         for c in cols: self.tree.heading(c, text=c); self.tree.column(c, width=100)
         self.tree.tag_configure('low', background='#fff3cd'); self.tree.tag_configure('crit', background='#f8d7da')
         
-        # Scrollbar for tree
         vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
         
@@ -382,7 +411,7 @@ class FilamentManagerApp:
             self.refresh_inventory_list()
             self.cancel_edit()
 
-    # --- TAB 3: HISTORY (ELASTIC) ---
+    # --- TAB 3: HISTORY ---
     def build_history_tab(self):
         frame = ttk.Frame(self.tab_history, padding=10)
         frame.pack(fill="both", expand=True)
@@ -391,14 +420,12 @@ class FilamentManagerApp:
         self.hist_tree = ttk.Treeview(frame, columns=cols, show="headings")
         for c in cols: self.hist_tree.heading(c, text=c); self.hist_tree.column(c, width=100)
         
-        # Scrollbar
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self.hist_tree.yview)
         self.hist_tree.configure(yscrollcommand=vsb.set)
         
         self.hist_tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
         
-        # Buttons at bottom
         btn_frame = ttk.Frame(self.tab_history, padding=5); btn_frame.pack(fill="x")
         ttk.Button(btn_frame, text="Refresh", command=self.refresh_history_list).pack(side="left", padx=5, expand=True, fill="x")
         ttk.Button(btn_frame, text="Delete Record", command=self.delete_history_item).pack(side="left", padx=5, expand=True, fill="x")
