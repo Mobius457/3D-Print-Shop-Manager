@@ -38,7 +38,7 @@ This application is a lightweight, single-file solution that manages your **Inve
 * **Wife-Approved Layout:** Includes line-item breakdowns, technical specs (layer height/material), and care instructions for your customers.
 * **Auto-Save:** Receipts are instantly saved to `Documents/3D_Print_Receipts`.
 
-> <img width="518" height="546" alt="Screenshot 2025-12-10 122953" src="https://github.com/user-attachments/assets/dcf40c66-e8eb-4003-b442-a0eaf8cde898" />
+> **[INSERT SCREENSHOT OF YOUR RECEIPT HERE]**
 
 ### 📦 Intelligent Inventory System
 * **Live Tracking:** Automatically subtracts grams from your spools when you finish a job.
