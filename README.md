@@ -7,7 +7,7 @@ Stop guessing your prices. Stop running out of filament mid-print. Stop losing t
 This application is a lightweight, single-file solution that manages your **Inventory**, calculates **Perfect Prices** based on professional formulas (Material + Electricity + Machine Wear), and tracks your **Sales History** automatically.
 
 ---
-## ✨ New in v10.0: The "Modern UI" Update
+## ✨ New in v7: The "Modern UI" Update
 * **Fresh Look:** Rebuilt the interface with a clean, flat, modern design.
 * **Dark Mode:** One-click toggle between **Light** (Flatly) and **Dark** (Darkly) themes.
 * **Visual Clarity:** Color-coded buttons (Success/Danger/Info) and zebra-striped tables make data easier to read.
@@ -92,3 +92,4 @@ This app uses a "Clean Desktop" philosophy.
 ## ⚖️ License
 
 Free to use for personal or commercial printing businesses. Happy Printing!
+
