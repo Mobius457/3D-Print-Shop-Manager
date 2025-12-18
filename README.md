@@ -70,3 +70,25 @@ To compile this into a single executable file for Windows:
 
 ```bash
 pyinstaller --noconsole --onefile --name="PrintShopManager" --collect-all ttkbootstrap --add-data "spool_reference.png;." print_manager.py
+ ```
+---
+ 
+## Data Location
+Cloud Mode: Looks for User/OneDrive/PrintShopManager (or Dropbox/Google Drive).
+
+Local Mode: Defaults to %LOCALAPPDATA%\PrintShopManager\ if no cloud is found.
+
+Receipts: Saved to Documents\3D_Print_Receipts.
+
+## ⚖️ License
+Free to use for personal or commercial printing businesses. Happy Printing!
+
+---
+
+### 2. The `requirements.txt`
+Make sure this file is up to date in your folder so GitHub knows what libraries are needed. It should contain:
+
+```text
+Pillow
+ttkbootstrap
+
