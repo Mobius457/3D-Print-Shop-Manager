@@ -1,0 +1,20 @@
+# Ignore Python Cache
+__pycache__/
+*.py[cod]
+
+# Ignore EXE build folders
+dist/
+build/
+*.spec
+
+# Ignore Editor Settings
+.vscode/
+.idea/
+
+# Ignore Backups created by the App
+*Backup*.zip
+*Backup*.json
+
+# Ignore Virtual Environments (if you use them)
+venv/
+env/
