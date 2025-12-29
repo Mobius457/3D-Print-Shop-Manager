@@ -65,3 +65,14 @@ To compile this into a single executable file for Windows:
 
 ```bash
 pyinstaller --noconsole --onefile --name="PrintShopManager" --collect-all ttkbootstrap --add-data "spool_reference.png;." print_manager.py
+```
+
+## ⚖️ License
+Free to use for personal or commercial printing businesses. Happy Printing!
+
+
+### 2. The `requirements.txt`
+*Ensure this file is in your folder.*
+```text
+Pillow
+ttkbootstrap
