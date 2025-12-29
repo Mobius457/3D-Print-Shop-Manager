@@ -1,0 +1,13 @@
+----------------------------------------
+INVOICE: 3D PRINTING SERVICE
+Date: 2025-12-09
+Item: smaller santa hat
+----------------------------------------
+Breakdown:
+ - Bambu (Red): 30.0g
+
+Print Time: 2 Hours
+----------------------------------------
+TOTAL: $5.00
+----------------------------------------
+Thank you for supporting our hobby business!
