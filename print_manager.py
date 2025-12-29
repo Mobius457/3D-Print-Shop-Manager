@@ -25,8 +25,8 @@ APP_NAME = "PrintShopManager"
 VERSION = "v13.2 (Custom Data Path)"
 
 # 🔧 GITHUB SETTINGS
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/print_manager.py"
-GITHUB_REPO_URL = "https://github.com/YOUR_USERNAME/YOUR_REPO/releases"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
+GITHUB_REPO_URL = "https://github.com/Mobius457/3D-Print-Shop-Manager/releases"
 
 # ======================================================
 # PATH FINDER LOGIC

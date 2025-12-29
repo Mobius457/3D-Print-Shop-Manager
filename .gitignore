@@ -18,3 +18,11 @@ build/
 # Ignore Virtual Environments (if you use them)
 venv/
 env/
+
+# --- User Data (DO NOT UPLOAD) ---
+filament_inventory.json
+sales_history.json
+maintenance_log.json
+job_queue.json
+print_shop_config.json
+config.json
