@@ -22,19 +22,86 @@ import re
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v13.1 (Smart Updater)"
+VERSION = "v13.2 (Custom Data Path)"
 
-# ------------------------------------------------------
-# 🔧 UPDATE SETTINGS (YOU MUST EDIT THESE)
-# ------------------------------------------------------
-# 1. The Raw Link to the code (For checking version)
-#    Go to your GitHub > print_manager.py > Click "Raw" > Copy URL
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
+# 🔧 GITHUB SETTINGS
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/print_manager.py"
+GITHUB_REPO_URL = "https://github.com/YOUR_USERNAME/YOUR_REPO/releases"
 
-# 2. The Link to your Releases page (For EXE users to download)
-#    Usually: https://github.com/YOUR_USERNAME/YOUR_REPO/releases
-GITHUB_REPO_URL = "https://github.com/Mobius457/3D-Print-Shop-Manager/releases"
-# ------------------------------------------------------
+# ======================================================
+# PATH FINDER LOGIC
+# ======================================================
+
+def get_app_data_folder():
+    """Returns the local folder where we store the config file (NOT the database)."""
+    user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
+    if os.name == 'nt':
+        local = os.path.join(os.environ.get('LOCALAPPDATA', user_profile), APP_NAME)
+    else:
+        local = os.path.join(user_profile, ".local", "share", APP_NAME)
+    if not os.path.exists(local):
+        os.makedirs(local, exist_ok=True)
+    return local
+
+CONFIG_FILE = os.path.join(get_app_data_folder(), "config.json")
+
+def get_data_path():
+    """
+    Determines where the JSON database lives.
+    1. Checks config.json for a user-defined override.
+    2. Scans standard Cloud paths.
+    3. Falls back to Local AppData.
+    """
+    # 1. Check Config Override
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                cfg = json.load(f)
+                custom_path = cfg.get('data_folder', '')
+                if custom_path and os.path.exists(custom_path):
+                    return custom_path
+        except:
+            pass # Config corrupt or unreadable, ignore it
+
+    # 2. Priority: Check for Cloud Storage roots
+    user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
+    cloud_candidates = [
+        os.path.join(user_profile, "Dropbox"),
+        os.path.join(user_profile, "OneDrive"),
+        os.path.join(user_profile, "OneDrive - Personal"),
+        os.path.join(user_profile, "Google Drive"),
+    ]
+    
+    # Check "OneDrive - [Anything]" for business accounts
+    if os.path.exists(user_profile):
+        for item in os.listdir(user_profile):
+            if "OneDrive" in item and os.path.isdir(os.path.join(user_profile, item)):
+                cloud_candidates.append(os.path.join(user_profile, item))
+
+    for root in cloud_candidates:
+        if os.path.exists(root):
+            app_folder = os.path.join(root, "PrintShopManager")
+            # Only use it if the folder actually exists (don't create pollution)
+            if os.path.exists(app_folder):
+                return app_folder
+
+    # 3. Fallback: Local AppData (Default)
+    return get_app_data_folder()
+
+# Set Global Data Directory
+DATA_DIR = get_data_path()
+
+# Ensure it exists (if it's the fallback or a new cloud create)
+if not os.path.exists(DATA_DIR):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except:
+        DATA_DIR = get_app_data_folder() # Ultimate fallback
+
+DB_FILE = os.path.join(DATA_DIR, "filament_inventory.json")
+HISTORY_FILE = os.path.join(DATA_DIR, "sales_history.json")
+MAINT_FILE = os.path.join(DATA_DIR, "maintenance_log.json")
+QUEUE_FILE = os.path.join(DATA_DIR, "job_queue.json")
 
 def get_real_windows_docs_path():
     try:
@@ -45,44 +112,6 @@ def get_real_windows_docs_path():
         return buf.value
     except:
         return os.path.join(os.path.expanduser("~"), "Documents")
-
-# --- SMART DATA PATH (CLOUD SYNC LOGIC) ---
-def get_data_path():
-    user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
-    
-    # Priority: Check for Cloud Storage roots first
-    cloud_candidates = [
-        os.path.join(user_profile, "Dropbox"),
-        os.path.join(user_profile, "OneDrive"),
-        os.path.join(user_profile, "OneDrive - Personal"),
-        os.path.join(user_profile, "Google Drive"),
-    ]
-    
-    for root in cloud_candidates:
-        if os.path.exists(root):
-            app_folder = os.path.join(root, "PrintShopManager")
-            try:
-                if not os.path.exists(app_folder):
-                    os.makedirs(app_folder, exist_ok=True)
-                return app_folder
-            except:
-                continue 
-
-    # Fallback: Local AppData
-    if os.name == 'nt':
-        local = os.path.join(os.environ.get('LOCALAPPDATA', user_profile), APP_NAME)
-    else:
-        local = os.path.join(user_profile, ".local", "share", APP_NAME)
-    
-    if not os.path.exists(local):
-        os.makedirs(local, exist_ok=True)
-    return local
-
-DATA_DIR = get_data_path()
-DB_FILE = os.path.join(DATA_DIR, "filament_inventory.json")
-HISTORY_FILE = os.path.join(DATA_DIR, "sales_history.json")
-MAINT_FILE = os.path.join(DATA_DIR, "maintenance_log.json")
-QUEUE_FILE = os.path.join(DATA_DIR, "job_queue.json")
 
 DOCS_DIR = os.path.join(get_real_windows_docs_path(), "3D_Print_Receipts")
 if not os.path.exists(DOCS_DIR):
@@ -200,6 +229,33 @@ class FilamentManagerApp:
         self.update_row_colors()
         self.cancel_edit()
 
+    def set_custom_data_path(self):
+        # Allow user to pick a folder
+        new_dir = filedialog.askdirectory(title="Select Folder to Store Data (OneDrive/Dropbox/etc)")
+        if new_dir:
+            # 1. Create Config File
+            cfg_data = {"data_folder": new_dir}
+            try:
+                with open(CONFIG_FILE, 'w') as f:
+                    json.dump(cfg_data, f)
+                
+                # 2. Check if data exists there, if not, offer to move it
+                new_db = os.path.join(new_dir, "filament_inventory.json")
+                if not os.path.exists(new_db) and os.path.exists(DB_FILE):
+                    if messagebox.askyesno("Move Data?", f"No data found in selected folder.\nMove current data from:\n{DATA_DIR}\n\nTo:\n{new_dir}?"):
+                        try:
+                            shutil.copy(DB_FILE, new_db)
+                            if os.path.exists(HISTORY_FILE): shutil.copy(HISTORY_FILE, os.path.join(new_dir, "sales_history.json"))
+                            if os.path.exists(MAINT_FILE): shutil.copy(MAINT_FILE, os.path.join(new_dir, "maintenance_log.json"))
+                            if os.path.exists(QUEUE_FILE): shutil.copy(QUEUE_FILE, os.path.join(new_dir, "job_queue.json"))
+                        except Exception as e:
+                            messagebox.showerror("Error Moving", str(e))
+
+                messagebox.showinfo("Restart Required", "Data folder updated.\nPlease restart the application.")
+                self.root.destroy()
+            except Exception as e:
+                messagebox.showerror("Config Error", f"Could not save config: {e}")
+
     def backup_data(self):
         save_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")], initialfile=f"Inventory_Backup_{datetime.now().strftime('%Y%m%d')}.json")
         if save_path:
@@ -246,24 +302,18 @@ class FilamentManagerApp:
             
             if match:
                 remote_version = match.group(1)
-                
                 if remote_version != VERSION:
-                    # Check if running as EXE or Script
                     if getattr(sys, 'frozen', False):
-                        # EXE MODE
-                        if messagebox.askyesno("Update Available", f"New version {remote_version} is available!\n(You have {VERSION})\n\nOpen download page?"):
+                        if messagebox.askyesno("Update Available", f"New version {remote_version} available!\nOpen download page?"):
                             webbrowser.open(GITHUB_REPO_URL)
                     else:
-                        # SCRIPT MODE
                         if messagebox.askyesno("Update Available", f"New version {remote_version} found.\nAuto-update now?"):
                             self.perform_script_update(remote_code)
                 else:
                     messagebox.showinfo("Up to Date", f"You are on the latest version ({VERSION}).")
             else:
                 messagebox.showerror("Error", "Could not verify version.")
-                
             self.refresh_dashboard()
-
         except Exception as e:
             messagebox.showerror("Update Error", f"Failed to check updates:\n{e}")
             self.refresh_dashboard()
@@ -272,16 +322,10 @@ class FilamentManagerApp:
         try:
             current_file = os.path.abspath(__file__)
             shutil.copy(current_file, current_file + ".bak")
-            
-            with open(current_file, "w", encoding="utf-8") as f:
-                f.write(new_code)
-            
+            with open(current_file, "w", encoding="utf-8") as f: f.write(new_code)
             messagebox.showinfo("Success", "Updated! Restarting...")
-            python = sys.executable
-            os.execl(python, python, *sys.argv)
-            
-        except Exception as e:
-            messagebox.showerror("Update Failed", f"Error: {e}")
+            python = sys.executable; os.execl(python, python, *sys.argv)
+        except Exception as e: messagebox.showerror("Update Failed", f"Error: {e}")
 
     # --- TAB 0: DASHBOARD ---
     def build_dashboard_tab(self):
@@ -293,23 +337,33 @@ class FilamentManagerApp:
         ttk.Button(head_frame, text="🌗 Toggle Theme", command=self.toggle_theme, bootstyle="secondary-outline").pack(side="right")
         ttk.Button(head_frame, text="🔄 Updates", command=self.check_for_updates, bootstyle="info-outline").pack(side="right", padx=10)
 
-        lbl_path = ttk.Label(head_frame, text=f"📂 Storage: {DATA_DIR}", font=("Arial", 8), foreground="gray"); lbl_path.pack(side="bottom", anchor="w")
+        # Show Current Path
+        self.lbl_path = ttk.Label(head_frame, text=f"📂 Storage: {DATA_DIR}", font=("Arial", 8), foreground="gray")
+        self.lbl_path.pack(side="bottom", anchor="w")
 
         grid_frame = ttk.Frame(main); grid_frame.pack(fill="both", expand=True)
         grid_frame.columnconfigure(0, weight=1); grid_frame.columnconfigure(1, weight=1)
+        
         f_alert = ttk.Labelframe(grid_frame, text=" ⚠️ Inventory Alerts ", padding=15, bootstyle="danger")
         f_alert.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.lbl_alerts = ttk.Label(f_alert, text="Scanning...", font=("Segoe UI", 11)); self.lbl_alerts.pack(anchor="w")
+        
         f_queue = ttk.Labelframe(grid_frame, text=" ⏳ Pending Jobs ", padding=15, bootstyle="warning")
         f_queue.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.lbl_queue_status = ttk.Label(f_queue, text="Scanning...", font=("Segoe UI", 11)); self.lbl_queue_status.pack(anchor="w")
+        
         f_money = ttk.Labelframe(grid_frame, text=" 💰 Monthly Performance ", padding=15, bootstyle="success")
         f_money.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         self.lbl_finance = ttk.Label(f_money, text="Calc...", font=("Segoe UI", 11)); self.lbl_finance.pack(anchor="w")
+        
         f_sys = ttk.Labelframe(grid_frame, text=" 💾 System Actions ", padding=15, bootstyle="info")
         f_sys.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
+        
         ttk.Button(f_sys, text="📦 Backup All Data (.zip)", command=self.backup_all_data, bootstyle="info").pack(fill="x", pady=5)
-        ttk.Button(f_sys, text="♻️ Restore Data", command=self.restore_all_data, bootstyle="secondary").pack(fill="x", pady=5)
+        
+        # NEW BUTTON: Set Data Folder
+        ttk.Button(f_sys, text="📂 Set Data Folder", command=self.set_custom_data_path, bootstyle="warning-outline").pack(fill="x", pady=5)
+        
         ttk.Button(f_sys, text="📂 Open Data Folder", command=lambda: os.startfile(DATA_DIR), bootstyle="link").pack(fill="x", pady=5)
         self.refresh_dashboard()
 
@@ -828,11 +882,9 @@ class FilamentManagerApp:
     def delete_spool(self):
         sel = self.tree.selection()
         if not sel: return
-        
-        if self.inv_filter_var.get():
+        if self.inv_filter_var.get(): 
             self.inv_filter_var.set("")
             return
-
         if messagebox.askyesno("Confirm", "Delete?"):
             del self.inventory[int(sel[0])]
             self.save_json(self.inventory, DB_FILE)
@@ -872,7 +924,6 @@ class FilamentManagerApp:
         self.refresh_history_list()
 
     def open_manual_history_dialog(self):
-        # Create a popup window for manual entry
         dialog = tk.Toplevel(self.root)
         dialog.title("Manually Log Past Job")
         dialog.geometry("450x650") # Taller window
