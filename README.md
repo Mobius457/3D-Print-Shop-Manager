@@ -1,4 +1,4 @@
-# 3D Print Shop Manager 🚀 (v13.1)
+# 3D Print Shop Manager 🚀 (v13.2)
 
 **The "All-in-One" ERP tool for 3D printing businesses and hobbyists.**
 
@@ -10,10 +10,10 @@ This lightweight Python application combines a **Business Manager** (Inventory, 
 
 ## ✨ Key Features
 
-### ☁️ Cloud & Sync
-* **Multi-User Sync:** Automatically detects **OneDrive**, **Dropbox**, or **Google Drive**. Install this app on two different computers, and they will sync inventory instantly.
-* **Smart Updater:** The app checks this GitHub repository for updates. If a new version is released, it can auto-update itself (Script mode) or direct you to the download page (EXE mode).
-* **Retroactive Logging:** Forgot to log a job yesterday? Use the "Log Past Job" feature to record history and deduct inventory with a custom date.
+### ☁️ Cloud & Sync (Enterprise Ready)
+* **Custom Data Path:** Works with **Work OneDrive**, **SharePoint**, **Syncthing**, or any specific folder you choose.
+* **Multi-User Sync:** Install on multiple computers and point them to the same shared folder to see inventory updates instantly.
+* **Auto-Updater:** Automatically checks GitHub for updates. Script users get auto-patched; EXE users get a download alert.
 
 ### 📦 Inventory & Workflow
 * **Visual Swatch Library:** Tracks which spools have a physical "Benchy" swatch printed (✅/❌ indicators).
@@ -23,7 +23,7 @@ This lightweight Python application combines a **Business Manager** (Inventory, 
 
 ### 💰 Business Analytics
 * **Smart Calculator:** Handles overhead, labor, filament swaps (waste), and discounts.
-* **Failure Logging:** One-click "Log Failure" button to deduct wasted filament and record the loss without deleting your job settings.
+* **Retroactive Logging:** Forgot to log a job yesterday? Use the "Log Past Job" feature to record history and deduct inventory with a custom date.
 * **Profit Dashboard:** Track Revenue, Net Profit, and Tax Write-offs in real-time.
 
 ---
@@ -48,12 +48,15 @@ This lightweight Python application combines a **Business Manager** (Inventory, 
 ---
 
 ## 📂 Configuration
-### Cloud Sync Setup
-To share data between two people (e.g., You and a Partner):
-1.  **Create a Folder:** On Computer A, create a folder named `PrintShopManager` inside your **OneDrive** or **Dropbox**.
-2.  **Share It:** Right-click that folder and **Share** it with Computer B's email (Select "Can Edit").
-3.  **Link It (Crucial):** On Computer B, go to the OneDrive/Dropbox website, find the shared folder, and click **"Add shortcut to My files"**.
-    * *This forces the folder to appear on the hard drive, not just the website.*
+### Setting up Sync (Crucial for Multiple Users)
+If you are using **OneDrive (Personal/Business)** or **Dropbox**:
+
+1.  **Run the App.**
+2.  Go to the **🏠 Dashboard** tab.
+3.  Look at the "System Actions" box.
+4.  Click **"📂 Set Data Folder"**.
+5.  Select the shared folder where you want your database to live (e.g., `OneDrive - MyCompany\PrintShopData`).
+6.  The app will restart and remember this location forever.
 
 ### Auto-Update Setup
 If you are forking this repo, edit the `GITHUB_RAW_URL` and `GITHUB_REPO_URL` variables at the top of `print_manager.py` to point to your own repository.
@@ -71,8 +74,12 @@ pyinstaller --noconsole --onefile --name="PrintShopManager" --collect-all ttkboo
 Free to use for personal or commercial printing businesses. Happy Printing!
 
 
-### 2. The `requirements.txt`
-*Ensure this file is in your folder.*
-```text
-Pillow
-ttkbootstrap
+---
+
+### 2. Git Commands to Push v13.2
+Run these in your VS Code terminal to send the new code and Readme to GitHub:
+
+```powershell
+git add .
+git commit -m "Update to v13.2: Added Manual Data Path selector for Work OneDrive support"
+git push origin main
