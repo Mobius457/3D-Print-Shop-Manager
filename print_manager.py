@@ -22,7 +22,7 @@ import re
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v13.2 (Custom Data Path)"
+VERSION = "v13.3 (Expanded Materials)"
 
 # 🔧 GITHUB SETTINGS
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
@@ -230,16 +230,12 @@ class FilamentManagerApp:
         self.cancel_edit()
 
     def set_custom_data_path(self):
-        # Allow user to pick a folder
         new_dir = filedialog.askdirectory(title="Select Folder to Store Data (OneDrive/Dropbox/etc)")
         if new_dir:
-            # 1. Create Config File
             cfg_data = {"data_folder": new_dir}
             try:
                 with open(CONFIG_FILE, 'w') as f:
                     json.dump(cfg_data, f)
-                
-                # 2. Check if data exists there, if not, offer to move it
                 new_db = os.path.join(new_dir, "filament_inventory.json")
                 if not os.path.exists(new_db) and os.path.exists(DB_FILE):
                     if messagebox.askyesno("Move Data?", f"No data found in selected folder.\nMove current data from:\n{DATA_DIR}\n\nTo:\n{new_dir}?"):
@@ -250,7 +246,6 @@ class FilamentManagerApp:
                             if os.path.exists(QUEUE_FILE): shutil.copy(QUEUE_FILE, os.path.join(new_dir, "job_queue.json"))
                         except Exception as e:
                             messagebox.showerror("Error Moving", str(e))
-
                 messagebox.showinfo("Restart Required", "Data folder updated.\nPlease restart the application.")
                 self.root.destroy()
             except Exception as e:
@@ -360,10 +355,7 @@ class FilamentManagerApp:
         f_sys.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
         
         ttk.Button(f_sys, text="📦 Backup All Data (.zip)", command=self.backup_all_data, bootstyle="info").pack(fill="x", pady=5)
-        
-        # NEW BUTTON: Set Data Folder
         ttk.Button(f_sys, text="📂 Set Data Folder", command=self.set_custom_data_path, bootstyle="warning-outline").pack(fill="x", pady=5)
-        
         ttk.Button(f_sys, text="📂 Open Data Folder", command=lambda: os.startfile(DATA_DIR), bootstyle="link").pack(fill="x", pady=5)
         self.refresh_dashboard()
 
@@ -675,7 +667,15 @@ class FilamentManagerApp:
         ttk.Button(id_frame, text="Auto", command=self.auto_gen_id, style="secondary.TButton", width=4).pack(side="left", padx=2)
 
         ttk.Label(add_frame, text="Material:").grid(row=0, column=4, sticky="e")
-        self.inv_mat_var = tk.StringVar(); self.cb_inv_mat = ttk.Combobox(add_frame, textvariable=self.inv_mat_var, values=("PLA", "PETG", "TPU", "ABS", "ASA", "Silk", "Other"), width=8); self.cb_inv_mat.grid(row=0, column=5, padx=5)
+        self.inv_mat_var = tk.StringVar()
+        self.cb_inv_mat = ttk.Combobox(add_frame, textvariable=self.inv_mat_var, width=10, 
+            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
+                    "PETG", "PETG Trans", "PCTG", 
+                    "TPU", "TPU 95A", 
+                    "ABS", "ASA", 
+                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", 
+                    "Other"))
+        self.cb_inv_mat.grid(row=0, column=5, padx=5)
         
         ttk.Label(add_frame, text="Color:").grid(row=0, column=6, sticky="e")
         self.inv_color = ttk.Entry(add_frame, width=10); self.inv_color.grid(row=0, column=7, padx=5)
@@ -835,7 +835,13 @@ class FilamentManagerApp:
         ttk.Checkbutton(f, text="Name:", variable=chk_name).grid(row=0, column=0, sticky="w")
         ttk.Entry(f, textvariable=val_name).grid(row=0, column=1, sticky="ew", padx=5)
         ttk.Checkbutton(f, text="Material:", variable=chk_mat).grid(row=1, column=0, sticky="w")
-        ttk.Combobox(f, textvariable=val_mat, values=("PLA", "PETG", "TPU", "ABS", "ASA", "Silk"), width=10).grid(row=1, column=1, sticky="ew", padx=5)
+        ttk.Combobox(f, textvariable=val_mat, width=10,
+            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
+                    "PETG", "PETG Trans", "PCTG", 
+                    "TPU", "TPU 95A", 
+                    "ABS", "ASA", 
+                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", 
+                    "Other")).grid(row=1, column=1, sticky="ew", padx=5)
         ttk.Checkbutton(f, text="Color:", variable=chk_col).grid(row=2, column=0, sticky="w")
         ttk.Entry(f, textvariable=val_col).grid(row=2, column=1, sticky="ew", padx=5)
         ttk.Checkbutton(f, text="Cost ($):", variable=chk_cost).grid(row=3, column=0, sticky="w")
@@ -864,7 +870,15 @@ class FilamentManagerApp:
             messagebox.showinfo("Info", "Select items first."); return
         dialog = tk.Toplevel(self.root); dialog.title("Quick Material Set"); dialog.geometry("300x150")
         ttk.Label(dialog, text=f"Set Material for {len(sel)} items:").pack(pady=10)
-        m_var = tk.StringVar(); cb = ttk.Combobox(dialog, textvariable=m_var, values=("PLA", "PETG", "TPU", "ABS", "ASA", "Silk", "Other"), state="readonly"); cb.pack(pady=5); cb.current(0)
+        m_var = tk.StringVar()
+        cb = ttk.Combobox(dialog, textvariable=m_var, state="readonly", 
+            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
+                    "PETG", "PETG Trans", "PCTG", 
+                    "TPU", "TPU 95A", 
+                    "ABS", "ASA", 
+                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", 
+                    "Other"))
+        cb.pack(pady=5); cb.current(0)
         def commit():
             new_mat = m_var.get()
             for iid in sel: self.inventory[int(iid)]['material'] = new_mat
@@ -1235,7 +1249,7 @@ class FilamentManagerApp:
             "First Layer Guide": ("=== THE FIRST LAYER (Z-OFFSET) ===\nThe #1 cause of print failure is the nozzle distance from the bed.\n\n1. NOZZLE TOO HIGH:\n   LOOKS LIKE: Round strands of spaghetti. Gaps between lines.\n   RESULT: Part pops off mid-print.\n   FIX: Lower Z-Offset (more negative number).\n\n2. NOZZLE TOO LOW:\n   LOOKS LIKE: Rough, sandpaper texture. Transparent layers.\n   RESULT: Clogged nozzle, Elephant's foot.\n   FIX: Raise Z-Offset.\n\n3. PERFECT SQUISH:\n   LOOKS LIKE: Flat surface, lines fused together, smooth touch.\n   TEST: Print a single layer square. It should be solid, not stringy."),
             "Slicer Basics": ("=== SLICER BASICS (Terminology) ===\n\n1. PERIMETERS (WALLS)\n   - The outer shell. Strength comes from WALLS, not infill.\n   - Standard: 2 walls. Strong: 4 walls.\n\n2. INFILL\n   - The internal structure. 15-20% is standard.\n   - Use 'Gyroid' for best strength/speed balance.\n\n3. SUPPORTS\n   - Scaffolding for overhangs > 45 degrees.\n   - Use 'Tree/Organic' supports to save plastic and time.\n\n4. BRIM vs. SKIRT\n   - Skirt: A line around the print to prime the nozzle (Does not touch part).\n   - Brim: A flat hat attached to the part to prevent warping."),
             "Under-Extrusion": ("=== UNDER-EXTRUSION (Gaps/Spongy Parts) ===\n\nSYMPTOM: Missing layers, gaps in walls, weak infill.\nCAUSE: The printer can't push plastic fast enough.\n\n1. THE 'CLICKING' SOUND:\n   - Extruder gear is slipping because nozzle is blocked.\n   - FIX: Check for clog, increase temp 5°C, or slow down.\n\n2. PARTIAL CLOG:\n   - Filament comes out curling to one side.\n   - FIX: Perform a 'Cold Pull' (Heat to 200, cool to 90, yank filament out).\n\n3. CRACKED EXTRUDER ARM:\n   - Common on Creality/Ender printers.\n   - FIX: Inspect the plastic arm near the gears for hairline cracks."),
-            "Wet Filament": ("=== WET FILAMENT DIAGNOSIS ===\n\nPlastic absorbs moisture from the air (Hygroscopic).\nEven new vacuum-sealed rolls can be wet!\n\nSYMPTOMS:\n1. Popping/Hissing sounds while printing.\n2. Excessive Stringing that retraction settings won't fix.\n3. Rough/Fuzzy surface texture.\n4. Brittle filament (snaps when you bend it).\n\nFIX: You must dry it.\n- Filament Dryer: 45°C (PLA) / 65°C (PETG) for 6 hours.\n- Food Dehydrator works well too.\n- DO NOT use a kitchen oven (inaccurate temps will melt spool)."),
+            "Wet Filament": ("=== WET FILAMENT DIAGNOSIS ===\n\nPlastic absorbs moisture from the air (Hygroscopic).\nEven new vacuum-sealed rolls can be wet!\n\nSYMPTOMS:\n1. Popping/Hissing sounds while printing.\n2. Excessive Stringing that retraction settings won.t fix.\n3. Rough/Fuzzy surface texture.\n4. Brittle filament (snaps when you bend it).\n\nFIX: You must dry it.\n- Filament Dryer: 45°C (PLA) / 65°C (PETG) for 6 hours.\n- Food Dehydrator works well too.\n- DO NOT use a kitchen oven (inaccurate temps will melt spool)."),
             "Hardware Maintenance": ("=== MONTHLY HARDWARE CHECK ===\n\n1. ECCENTRIC NUTS (Wobble Check):\n   - Grab the print head and bed. Do they wobble?\n   - FIX: Tighten the single nut on the inner wheel until wobble stops.\n\n2. BELT TENSION:\n   - Loose belts = Oval circles and layer shifts.\n   - Tight belts = Motor strain.\n   - FIX: Should twang like a low bass guitar string.\n\n3. CLEAN THE Z-ROD:\n   - Clean old grease/dust off the tall lead screw.\n   - Apply fresh PTFE lube or White Lithium Grease."),
             "PEI Sheet": ("=== PEI SHEET (The Gold Standard) ===\n\nPolyetherimide (PEI) is the most popular modern print surface.\n\n1. TEXTURED PEI (Rough/Gold):\n   - Great for PETG and PLA.\n   - NO GLUE needed for PLA. Let the bed cool, and prints pop off.\n\n2. SMOOTH PEI (Flat/Black/Gold):\n   - Gives a mirror finish to the bottom of prints.\n   - WARNING: PETG and TPU stick too well to smooth PEI and can rip the sheet.\n   - FIX: Use Glue Stick as a release agent for PETG/TPU."),
             "Troubleshooting Guide": ("=== UNIVERSAL TROUBLESHOOTING GUIDE ===\n\n1. WARPING (Corners lifting off bed)\n   WHY? Plastic shrinks as it cools. Cool air pulls corners up.\n   FIX: \n   - Clean bed with Dish Soap (Grease is the enemy).\n   - Raise Bed Temp 5-10°C.\n   - Use a 'Brim' in slicer.\n   - Stop drafts (Close windows/doors).\n\n2. STRINGING (Cobwebs between parts)\n   WHY? Nozzle leaking pressure while moving.\n   FIX:\n   - Dry your filament (Wet filament = steam = pressure).\n   - Lower Nozzle Temp 5-10°C.\n   - Increase Retraction Distance.\n\n3. ELEPHANT'S FOOT (Bottom layers flared out)\n   WHY? Bed is too hot or Nozzle is too close, squishing layers.\n   FIX:\n   - Lower Bed Temp 5°C.\n   - Baby-step Z-Offset UP slightly during first layer.\n\n4. LAYER SHIFT (Staircase effect)\n   WHY? Printer hit something or belts slipped.\n   FIX:\n   - Tighten Belts (Should twang like a guitar string).\n   - Check if nozzle hit a curled-up overhang.")
@@ -1243,8 +1257,7 @@ class FilamentManagerApp:
 
     # --- TAB 5: MAINTENANCE TRACKER ---
     def build_maintenance_tab(self):
-        frame = ttk.Frame(self.tab_maint, padding=10)
-        frame.pack(fill="both", expand=True)
+        frame = ttk.Frame(self.tab_maint, padding=10); frame.pack(fill="both", expand=True)
         cols = ("Task", "Freq", "Last Done", "Status")
         self.maint_tree = ttk.Treeview(frame, columns=cols, show="headings", height=15, bootstyle="info")
         for c in cols: self.maint_tree.heading(c, text=c)
