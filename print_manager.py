@@ -6,34 +6,40 @@ import json
 import os
 import sys
 import shutil
+import glob
 import webbrowser
 import ctypes.wintypes
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image, ImageTk, ImageDraw
 import difflib
 import zipfile
-import base64
-import io
 import urllib.request
 import re
+
+# Try to import Matplotlib (Safe Failover if not installed)
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 # ======================================================
 # CONFIGURATION
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v13.3 (Expanded Materials)"
+VERSION = "v13.9 (Digital Filament Guide)"
 
 # 🔧 GITHUB SETTINGS
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
 GITHUB_REPO_URL = "https://github.com/Mobius457/3D-Print-Shop-Manager/releases"
 
 # ======================================================
-# PATH FINDER LOGIC
+# PATH & SYSTEM LOGIC
 # ======================================================
 
 def get_app_data_folder():
-    """Returns the local folder where we store the config file (NOT the database)."""
     user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
     if os.name == 'nt':
         local = os.path.join(os.environ.get('LOCALAPPDATA', user_profile), APP_NAME)
@@ -46,13 +52,6 @@ def get_app_data_folder():
 CONFIG_FILE = os.path.join(get_app_data_folder(), "config.json")
 
 def get_data_path():
-    """
-    Determines where the JSON database lives.
-    1. Checks config.json for a user-defined override.
-    2. Scans standard Cloud paths.
-    3. Falls back to Local AppData.
-    """
-    # 1. Check Config Override
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
@@ -60,10 +59,8 @@ def get_data_path():
                 custom_path = cfg.get('data_folder', '')
                 if custom_path and os.path.exists(custom_path):
                     return custom_path
-        except:
-            pass # Config corrupt or unreadable, ignore it
+        except: pass
 
-    # 2. Priority: Check for Cloud Storage roots
     user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
     cloud_candidates = [
         os.path.join(user_profile, "Dropbox"),
@@ -71,8 +68,6 @@ def get_data_path():
         os.path.join(user_profile, "OneDrive - Personal"),
         os.path.join(user_profile, "Google Drive"),
     ]
-    
-    # Check "OneDrive - [Anything]" for business accounts
     if os.path.exists(user_profile):
         for item in os.listdir(user_profile):
             if "OneDrive" in item and os.path.isdir(os.path.join(user_profile, item)):
@@ -81,22 +76,14 @@ def get_data_path():
     for root in cloud_candidates:
         if os.path.exists(root):
             app_folder = os.path.join(root, "PrintShopManager")
-            # Only use it if the folder actually exists (don't create pollution)
-            if os.path.exists(app_folder):
-                return app_folder
+            if os.path.exists(app_folder): return app_folder
 
-    # 3. Fallback: Local AppData (Default)
     return get_app_data_folder()
 
-# Set Global Data Directory
 DATA_DIR = get_data_path()
-
-# Ensure it exists (if it's the fallback or a new cloud create)
 if not os.path.exists(DATA_DIR):
-    try:
-        os.makedirs(DATA_DIR, exist_ok=True)
-    except:
-        DATA_DIR = get_app_data_folder() # Ultimate fallback
+    try: os.makedirs(DATA_DIR, exist_ok=True)
+    except: DATA_DIR = get_app_data_folder()
 
 DB_FILE = os.path.join(DATA_DIR, "filament_inventory.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "sales_history.json")
@@ -105,23 +92,17 @@ QUEUE_FILE = os.path.join(DATA_DIR, "job_queue.json")
 
 def get_real_windows_docs_path():
     try:
-        CSIDL_PERSONAL = 5
-        SHGFP_TYPE_CURRENT = 0
         buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
-        ctypes.windll.shell32.SHGetFolderPathW(None, CSIDL_PERSONAL, None, SHGFP_TYPE_CURRENT, buf)
+        ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf)
         return buf.value
-    except:
-        return os.path.join(os.path.expanduser("~"), "Documents")
+    except: return os.path.join(os.path.expanduser("~"), "Documents")
 
 DOCS_DIR = os.path.join(get_real_windows_docs_path(), "3D_Print_Receipts")
-if not os.path.exists(DOCS_DIR):
-    os.makedirs(DOCS_DIR, exist_ok=True)
+if not os.path.exists(DOCS_DIR): os.makedirs(DOCS_DIR, exist_ok=True)
 
 def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.dirname(os.path.abspath(__file__))
+    try: base_path = sys._MEIPASS
+    except Exception: base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 IMAGE_FILE = resource_path("spool_reference.png")
@@ -134,13 +115,14 @@ class FilamentManagerApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"3D Print Shop Manager ({VERSION})")
-        self.root.geometry("1280x950")
+        self.root.geometry("1300x950")
         
-        self.load_icons()
+        self.defaults = self.load_sticky_settings()
+        self.icon_cache = {} 
+        self.ref_images_cache = [] 
         self.load_all_data()
 
-        if not self.maintenance:
-            self.init_default_maintenance()
+        if not self.maintenance: self.init_default_maintenance()
         
         self.current_job_filaments = []
         self.calc_vals = {"mat_cost": 0, "overhead": 0, "labor": 0, "subtotal": 0, "total": 0, "profit": 0, "margin": 0, "hours": 0, "grams": 0}
@@ -153,6 +135,7 @@ class FilamentManagerApp:
 
         self.init_materials_data()
         self.init_resource_links()
+        self.load_icons()
 
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
@@ -187,21 +170,9 @@ class FilamentManagerApp:
 
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
 
+    # --- HELPERS ---
     def load_icons(self):
-        try:
-            img_yes = Image.new('RGBA', (16, 16), (0, 0, 0, 0)) 
-            draw_yes = ImageDraw.Draw(img_yes)
-            draw_yes.line([(3, 8), (7, 12), (13, 4)], fill='#2ecc71', width=3)
-            self.icon_yes = ImageTk.PhotoImage(img_yes)
-            
-            img_no = Image.new('RGBA', (16, 16), (0, 0, 0, 0)) 
-            draw_no = ImageDraw.Draw(img_no)
-            draw_no.line([(4, 4), (12, 12)], fill='#e74c3c', width=3)
-            draw_no.line([(4, 12), (12, 4)], fill='#e74c3c', width=3)
-            self.icon_no = ImageTk.PhotoImage(img_no)
-        except Exception as e:
-            self.icon_yes = None
-            self.icon_no = None
+        pass
 
     def load_json(self, filepath):
         if not os.path.exists(filepath): return []
@@ -218,6 +189,53 @@ class FilamentManagerApp:
         self.maintenance = self.load_json(MAINT_FILE)
         self.queue = self.load_json(QUEUE_FILE)
 
+    def load_sticky_settings(self):
+        defaults = {"markup": "2.5", "labor": "0.75", "waste": "20", "discount": "0"}
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    cfg = json.load(f)
+                    defaults.update(cfg.get('calc_defaults', {}))
+            except: pass
+        return defaults
+
+    def save_sticky_settings(self):
+        new_defaults = {
+            "markup": self.entry_markup.get(),
+            "labor": self.entry_processing.get(), 
+            "waste": self.entry_waste.get(),
+            "discount": self.entry_discount.get()
+        }
+        current_cfg = {}
+        if os.path.exists(CONFIG_FILE):
+            try: 
+                with open(CONFIG_FILE, 'r') as f: current_cfg = json.load(f)
+            except: pass
+        
+        current_cfg['calc_defaults'] = new_defaults
+        with open(CONFIG_FILE, 'w') as f: json.dump(current_cfg, f)
+
+    def generate_color_swatch(self, color_name):
+        c_name = color_name.lower()
+        hex_col = "#bdc3c7"
+        
+        colors = {
+            "red": "#e74c3c", "blue": "#3498db", "green": "#2ecc71", "black": "#2c3e50",
+            "white": "#ecf0f1", "grey": "#95a5a6", "gray": "#95a5a6", "orange": "#e67e22",
+            "yellow": "#f1c40f", "purple": "#9b59b6", "pink": "#fd79a8", "gold": "#f1c40f",
+            "silver": "#bdc3c7", "transparent": "#dfe6e9", "clear": "#dfe6e9", "brown": "#795548",
+            "glow": "#55efc4", "wood": "#d35400", "silk": "#a29bfe", "teal": "#008080", "cyan": "#00FFFF"
+        }
+        
+        for k, v in colors.items():
+            if k in c_name:
+                hex_col = v; break
+        
+        img = Image.new('RGBA', (20, 20), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.ellipse([2, 2, 18, 18], fill=hex_col, outline="black", width=1)
+        return ImageTk.PhotoImage(img)
+
     def on_tab_change(self, event):
         self.load_all_data() 
         self.update_filament_dropdown()
@@ -229,34 +247,7 @@ class FilamentManagerApp:
         self.update_row_colors()
         self.cancel_edit()
 
-    def set_custom_data_path(self):
-        new_dir = filedialog.askdirectory(title="Select Folder to Store Data (OneDrive/Dropbox/etc)")
-        if new_dir:
-            cfg_data = {"data_folder": new_dir}
-            try:
-                with open(CONFIG_FILE, 'w') as f:
-                    json.dump(cfg_data, f)
-                new_db = os.path.join(new_dir, "filament_inventory.json")
-                if not os.path.exists(new_db) and os.path.exists(DB_FILE):
-                    if messagebox.askyesno("Move Data?", f"No data found in selected folder.\nMove current data from:\n{DATA_DIR}\n\nTo:\n{new_dir}?"):
-                        try:
-                            shutil.copy(DB_FILE, new_db)
-                            if os.path.exists(HISTORY_FILE): shutil.copy(HISTORY_FILE, os.path.join(new_dir, "sales_history.json"))
-                            if os.path.exists(MAINT_FILE): shutil.copy(MAINT_FILE, os.path.join(new_dir, "maintenance_log.json"))
-                            if os.path.exists(QUEUE_FILE): shutil.copy(QUEUE_FILE, os.path.join(new_dir, "job_queue.json"))
-                        except Exception as e:
-                            messagebox.showerror("Error Moving", str(e))
-                messagebox.showinfo("Restart Required", "Data folder updated.\nPlease restart the application.")
-                self.root.destroy()
-            except Exception as e:
-                messagebox.showerror("Config Error", f"Could not save config: {e}")
-
-    def backup_data(self):
-        save_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")], initialfile=f"Inventory_Backup_{datetime.now().strftime('%Y%m%d')}.json")
-        if save_path:
-            shutil.copy(DB_FILE, save_path)
-            messagebox.showinfo("Backup", f"Saved to:\n{save_path}")
-
+    # --- SYSTEM ACTIONS ---
     def toggle_theme(self):
         if self.current_theme == "flatly":
             self.style.theme_use("darkly")
@@ -280,46 +271,64 @@ class FilamentManagerApp:
                 tree.tag_configure('low', background=low_bg, foreground=warn_fg)
                 tree.tag_configure('crit', background=crit_bg, foreground=warn_fg)
 
-    # --- AUTO-UPDATE LOGIC ---
-    def check_for_updates(self):
-        if "YOUR_USERNAME" in GITHUB_RAW_URL:
-            messagebox.showwarning("Update Config", "Please update GITHUB_RAW_URL in the script to point to your repository.")
-            return
+    def set_custom_data_path(self):
+        new_dir = filedialog.askdirectory(title="Select Folder to Store Data (OneDrive/Dropbox/etc)")
+        if new_dir:
+            cfg_data = {"data_folder": new_dir}
+            try:
+                with open(CONFIG_FILE, 'w') as f:
+                    json.dump(cfg_data, f)
+                new_db = os.path.join(new_dir, "filament_inventory.json")
+                if not os.path.exists(new_db) and os.path.exists(DB_FILE):
+                    if messagebox.askyesno("Move Data?", f"No data found in selected folder.\nMove current data from:\n{DATA_DIR}\n\nTo:\n{new_dir}?"):
+                        try:
+                            shutil.copy(DB_FILE, new_db)
+                            if os.path.exists(HISTORY_FILE): shutil.copy(HISTORY_FILE, os.path.join(new_dir, "sales_history.json"))
+                            if os.path.exists(MAINT_FILE): shutil.copy(MAINT_FILE, os.path.join(new_dir, "maintenance_log.json"))
+                            if os.path.exists(QUEUE_FILE): shutil.copy(QUEUE_FILE, os.path.join(new_dir, "job_queue.json"))
+                        except Exception as e:
+                            messagebox.showerror("Error Moving", str(e))
+                messagebox.showinfo("Restart Required", "Data folder updated.\nPlease restart the application.")
+                self.root.destroy()
+            except Exception as e:
+                messagebox.showerror("Config Error", f"Could not save config: {e}")
 
+    def backup_all_data(self):
+        fname = f"PrintShop_Backup_{datetime.now().strftime('%Y-%m-%d')}.zip"
+        save_path = filedialog.asksaveasfilename(defaultextension=".zip", initialfile=fname, filetypes=[("Zip Archive", "*.zip")])
+        if not save_path: return
         try:
-            self.lbl_alerts.config(text="Checking for updates...", foreground="blue")
-            self.root.update()
-            
-            with urllib.request.urlopen(GITHUB_RAW_URL) as response:
-                remote_code = response.read().decode('utf-8')
+            with zipfile.ZipFile(save_path, 'w') as zipf:
+                if os.path.exists(DB_FILE): zipf.write(DB_FILE, arcname="filament_inventory.json")
+                if os.path.exists(HISTORY_FILE): zipf.write(HISTORY_FILE, arcname="sales_history.json")
+                if os.path.exists(MAINT_FILE): zipf.write(MAINT_FILE, arcname="maintenance_log.json")
+                if os.path.exists(QUEUE_FILE): zipf.write(QUEUE_FILE, arcname="job_queue.json")
+            messagebox.showinfo("Backup", f"Full backup saved to:\n{save_path}")
+        except Exception as e: messagebox.showerror("Error", str(e))
 
+    def check_for_updates(self):
+        if "YOUR_USERNAME" in GITHUB_RAW_URL: messagebox.showwarning("Update Config", "Please update GITHUB_RAW_URL in the script."); return
+        try:
+            self.lbl_alerts.config(text="Checking for updates...", foreground="blue"); self.root.update()
+            with urllib.request.urlopen(GITHUB_RAW_URL) as response: remote_code = response.read().decode('utf-8')
             match = re.search(r'VERSION\s*=\s*"([^"]+)"', remote_code)
-            
             if match:
                 remote_version = match.group(1)
                 if remote_version != VERSION:
                     if getattr(sys, 'frozen', False):
-                        if messagebox.askyesno("Update Available", f"New version {remote_version} available!\nOpen download page?"):
-                            webbrowser.open(GITHUB_REPO_URL)
+                        if messagebox.askyesno("Update Available", f"New version {remote_version} available!\nOpen download page?"): webbrowser.open(GITHUB_REPO_URL)
                     else:
-                        if messagebox.askyesno("Update Available", f"New version {remote_version} found.\nAuto-update now?"):
-                            self.perform_script_update(remote_code)
-                else:
-                    messagebox.showinfo("Up to Date", f"You are on the latest version ({VERSION}).")
-            else:
-                messagebox.showerror("Error", "Could not verify version.")
+                        if messagebox.askyesno("Update Available", f"New version {remote_version} found.\nAuto-update now?"): self.perform_script_update(remote_code)
+                else: messagebox.showinfo("Up to Date", f"You are on the latest version ({VERSION}).")
             self.refresh_dashboard()
-        except Exception as e:
-            messagebox.showerror("Update Error", f"Failed to check updates:\n{e}")
-            self.refresh_dashboard()
+        except Exception as e: messagebox.showerror("Update Error", f"Failed to check updates:\n{e}"); self.refresh_dashboard()
 
     def perform_script_update(self, new_code):
         try:
             current_file = os.path.abspath(__file__)
             shutil.copy(current_file, current_file + ".bak")
             with open(current_file, "w", encoding="utf-8") as f: f.write(new_code)
-            messagebox.showinfo("Success", "Updated! Restarting...")
-            python = sys.executable; os.execl(python, python, *sys.argv)
+            messagebox.showinfo("Success", "Updated! Restarting..."); python = sys.executable; os.execl(python, python, *sys.argv)
         except Exception as e: messagebox.showerror("Update Failed", f"Error: {e}")
 
     # --- TAB 0: DASHBOARD ---
@@ -332,7 +341,6 @@ class FilamentManagerApp:
         ttk.Button(head_frame, text="🌗 Toggle Theme", command=self.toggle_theme, bootstyle="secondary-outline").pack(side="right")
         ttk.Button(head_frame, text="🔄 Updates", command=self.check_for_updates, bootstyle="info-outline").pack(side="right", padx=10)
 
-        # Show Current Path
         self.lbl_path = ttk.Label(head_frame, text=f"📂 Storage: {DATA_DIR}", font=("Arial", 8), foreground="gray")
         self.lbl_path.pack(side="bottom", anchor="w")
 
@@ -347,9 +355,8 @@ class FilamentManagerApp:
         f_queue.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.lbl_queue_status = ttk.Label(f_queue, text="Scanning...", font=("Segoe UI", 11)); self.lbl_queue_status.pack(anchor="w")
         
-        f_money = ttk.Labelframe(grid_frame, text=" 💰 Monthly Performance ", padding=15, bootstyle="success")
-        f_money.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
-        self.lbl_finance = ttk.Label(f_money, text="Calc...", font=("Segoe UI", 11)); self.lbl_finance.pack(anchor="w")
+        self.f_graph = ttk.Labelframe(grid_frame, text=" 📊 Performance Analytics ", padding=10, bootstyle="success")
+        self.f_graph.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         
         f_sys = ttk.Labelframe(grid_frame, text=" 💾 System Actions ", padding=15, bootstyle="info")
         f_sys.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
@@ -366,50 +373,72 @@ class FilamentManagerApp:
                 low_stock.append(f"• {item['name']} ({item.get('material','')}): {item['weight']:.0f}g")
         if low_stock: self.lbl_alerts.config(text="\n".join(low_stock[:8]), bootstyle="danger")
         else: self.lbl_alerts.config(text="✅ All Stock Healthy", bootstyle="success")
+        
         if self.queue: self.lbl_queue_status.config(text=f"• {len(self.queue)} jobs pending.\n• Go to 'Job Queue' tab to process.", bootstyle="warning")
         else: self.lbl_queue_status.config(text="✅ Queue is Empty", bootstyle="success")
-        this_month_sales = 0.0; this_month_profit = 0.0
-        curr_m = str(datetime.now().month).zfill(2); curr_y = str(datetime.now().year)
+
+        if HAS_MATPLOTLIB:
+            self.draw_performance_chart()
+        else:
+            ttk.Label(self.f_graph, text="Matplotlib not installed.\nAnalytics unavailable.").pack(expand=True)
+
+    def draw_performance_chart(self):
+        for widget in self.f_graph.winfo_children(): widget.destroy()
+
+        today = datetime.now()
+        data = {}
+        for i in range(5, -1, -1):
+            month_key = (today - timedelta(days=30*i)).strftime("%b")
+            data[month_key] = 0.0
+
         for h in self.history:
             try:
-                d = datetime.strptime(h['date'], "%Y-%m-%d %H:%M")
-                if str(d.month).zfill(2) == curr_m and str(d.year) == curr_y:
-                    if not h.get('is_donation', False):
-                        this_month_sales += h.get('sold_for', 0); this_month_profit += h.get('profit', 0)
+                d_str = h['date'].split(" ")[0] if " " in h['date'] else h['date']
+                d_obj = datetime.strptime(d_str, "%Y-%m-%d")
+                m_key = d_obj.strftime("%b")
+                
+                if m_key in data and not h.get('is_donation', False):
+                    data[m_key] += h.get('profit', 0)
             except: pass
-        self.lbl_finance.config(text=f"Month: {datetime.now().strftime('%B %Y')}\n\n💵 Revenue: ${this_month_sales:.2f}\n📈 Profit:    ${this_month_profit:.2f}")
 
-    def backup_all_data(self):
-        fname = f"PrintShop_Backup_{datetime.now().strftime('%Y-%m-%d')}.zip"
-        save_path = filedialog.asksaveasfilename(defaultextension=".zip", initialfile=fname, filetypes=[("Zip Archive", "*.zip")])
-        if not save_path: return
-        try:
-            with zipfile.ZipFile(save_path, 'w') as zipf:
-                if os.path.exists(DB_FILE): zipf.write(DB_FILE, arcname="filament_inventory.json")
-                if os.path.exists(HISTORY_FILE): zipf.write(HISTORY_FILE, arcname="sales_history.json")
-                if os.path.exists(MAINT_FILE): zipf.write(MAINT_FILE, arcname="maintenance_log.json")
-                if os.path.exists(QUEUE_FILE): zipf.write(QUEUE_FILE, arcname="job_queue.json")
-            messagebox.showinfo("Backup", f"Full backup saved to:\n{save_path}")
-        except Exception as e: messagebox.showerror("Error", str(e))
+        months = list(data.keys())
+        profits = list(data.values())
 
-    def restore_all_data(self):
-        if not messagebox.askyesno("Confirm Restore", "This will OVERWRITE all current data.\nAre you sure?"): return
-        load_path = filedialog.askopenfilename(filetypes=[("Zip Archive", "*.zip")])
-        if not load_path: return
-        try:
-            with zipfile.ZipFile(load_path, 'r') as zipf: zipf.extractall(DATA_DIR)
-            self.load_all_data(); self.refresh_dashboard()
-            messagebox.showinfo("Success", "Data restored successfully!")
-        except Exception as e: messagebox.showerror("Error", f"Restore failed: {e}")
+        bg_col = '#2b2b2b' if self.current_theme == "darkly" else '#ffffff'
+        fg_col = 'white' if self.current_theme == "darkly" else 'black'
+        bar_col = '#2ecc71'
+
+        fig, ax = plt.subplots(figsize=(5, 3), dpi=100)
+        fig.patch.set_facecolor(bg_col)
+        ax.set_facecolor(bg_col)
+        
+        bars = ax.bar(months, profits, color=bar_col)
+        ax.set_title("Net Profit (Last 6 Months)", color=fg_col, fontsize=10)
+        ax.tick_params(axis='x', colors=fg_col)
+        ax.tick_params(axis='y', colors=fg_col)
+        ax.spines['bottom'].set_color(fg_col)
+        ax.spines['left'].set_color(fg_col) 
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        # DATA LABELS
+        ax.bar_label(bars, fmt='$%.0f', label_type='edge', color=fg_col, padding=3)
+
+        canvas = FigureCanvasTkAgg(fig, master=self.f_graph)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        plt.close(fig)
 
     # --- TAB 1: CALCULATOR ---
     def build_calculator_tab(self):
         paned = ttk.Panedwindow(self.tab_calc, orient=tk.HORIZONTAL)
         paned.pack(fill="both", expand=True, padx=5, pady=5)
         frame_left = ttk.Frame(paned); paned.add(frame_left, weight=1)
+        
         f_job = ttk.Labelframe(frame_left, text="1. Job Details", padding=10); f_job.pack(fill="x", pady=5)
         ttk.Label(f_job, text="Name:").pack(side="left")
         self.entry_job_name = ttk.Entry(f_job); self.entry_job_name.pack(side="left", fill="x", expand=True, padx=5)
+        
         f_mat = ttk.Labelframe(frame_left, text="2. Materials", padding=10); f_mat.pack(fill="x", pady=5)
         search_frame = ttk.Frame(f_mat); search_frame.grid(row=0, column=0, columnspan=5, sticky="ew", pady=(0, 5))
         ttk.Label(search_frame, text="🔍 Filter:").pack(side="left")
@@ -424,6 +453,7 @@ class FilamentManagerApp:
         self.list_job = tk.Listbox(list_frame, height=4, font=("Segoe UI", 9)); self.list_job.pack(side="left", fill="x", expand=True)
         sb_list = ttk.Scrollbar(list_frame, orient="vertical", command=self.list_job.yview); sb_list.pack(side="right", fill="y"); self.list_job.config(yscrollcommand=sb_list.set)
         ttk.Button(f_mat, text="Clear List", command=self.clear_job, bootstyle="danger-outline").grid(row=3, column=4, sticky="e")
+        
         f_over = ttk.Labelframe(frame_left, text="3. Labor & Overhead", padding=10); f_over.pack(fill="x", pady=5)
         ttk.Label(f_over, text="Print Time (h):").grid(row=0, column=0, sticky="e")
         self.entry_hours = ttk.Entry(f_over, width=6); self.entry_hours.grid(row=0, column=1, padx=5)
@@ -431,18 +461,30 @@ class FilamentManagerApp:
         self.entry_processing = ttk.Entry(f_over, width=6); self.entry_processing.insert(0,"0.00"); self.entry_processing.grid(row=0, column=3, padx=5)
         ttk.Label(f_over, text="Swaps (#):").grid(row=1, column=0, sticky="e", pady=5)
         self.entry_swaps = ttk.Entry(f_over, width=6); self.entry_swaps.grid(row=1, column=1, padx=5); self.entry_swaps.bind("<KeyRelease>", self.update_waste_estimate)
+        
         ttk.Label(f_over, text="Waste %:").grid(row=1, column=2, sticky="e", pady=5)
-        self.entry_waste = ttk.Entry(f_over, width=6); self.entry_waste.insert(0,"20"); self.entry_waste.grid(row=1, column=3, padx=5)
+        self.entry_waste = ttk.Entry(f_over, width=6)
+        self.entry_waste.insert(0, self.defaults.get("waste", "20"))
+        self.entry_waste.grid(row=1, column=3, padx=5)
+        
         f_price = ttk.Labelframe(frame_left, text="4. Pricing Strategy", padding=10); f_price.pack(fill="x", pady=5)
         ttk.Label(f_price, text="Markup (x):").grid(row=0, column=0, sticky="e")
-        self.entry_markup = ttk.Entry(f_price, width=6); self.entry_markup.insert(0,"2.5"); self.entry_markup.grid(row=0, column=1, padx=5)
+        self.entry_markup = ttk.Entry(f_price, width=6)
+        self.entry_markup.insert(0, self.defaults.get("markup", "2.5"))
+        self.entry_markup.grid(row=0, column=1, padx=5)
+        
         ttk.Label(f_price, text="Discount (%):").grid(row=0, column=2, sticky="e")
-        self.entry_discount = ttk.Entry(f_price, width=6); self.entry_discount.insert(0,"0"); self.entry_discount.grid(row=0, column=3, padx=5)
+        self.entry_discount = ttk.Entry(f_price, width=6)
+        self.entry_discount.insert(0, self.defaults.get("discount", "0"))
+        self.entry_discount.grid(row=0, column=3, padx=5)
+        
         self.var_round = tk.BooleanVar(value=False); self.var_donate = tk.BooleanVar(value=False); self.var_detailed_receipt = tk.BooleanVar(value=False)
         ttk.Checkbutton(f_price, text="Round to nearest $", variable=self.var_round, command=self.calculate_quote, bootstyle="round-toggle").grid(row=1, column=0, columnspan=2, sticky="w", pady=5)
         ttk.Checkbutton(f_price, text="Donation (Tax Write-off)", variable=self.var_donate, command=self.calculate_quote, bootstyle="round-toggle").grid(row=1, column=2, columnspan=2, sticky="w", pady=5)
         ttk.Checkbutton(f_price, text="Detailed Receipt (Line Items)", variable=self.var_detailed_receipt, bootstyle="round-toggle").grid(row=2, column=0, columnspan=3, sticky="w", pady=5)
+        
         ttk.Button(frame_left, text="CALCULATE QUOTE", command=self.calculate_quote, bootstyle="primary").pack(fill="x", pady=10)
+        
         frame_right = ttk.Frame(paned, padding=10); paned.add(frame_right, weight=1)
         self.lbl_breakdown = ttk.Label(frame_right, text="Enter details...", font=("Consolas", 11), justify="left", padding=10, relief="sunken", bootstyle="secondary-inverse"); self.lbl_breakdown.pack(fill="both", expand=True)
         self.lbl_profit_warn = ttk.Label(frame_right, text="", font=("Arial", 12, "bold")); self.lbl_profit_warn.pack(pady=5)
@@ -506,6 +548,8 @@ class FilamentManagerApp:
         try:
             hours = float(self.entry_hours.get() or 0); waste = float(self.entry_waste.get()) / 100.0
             process_fee = float(self.entry_processing.get()); markup = float(self.entry_markup.get()); discount_pct = float(self.entry_discount.get()) / 100.0
+            self.save_sticky_settings()
+            
             raw_mat_cost = sum(x['cost'] for x in self.current_job_filaments)
             mat_total = raw_mat_cost * (1 + waste); machine_cost = hours * 0.75; base_cost = mat_total + machine_cost + process_fee
             subtotal = base_cost * markup; discount_amt = subtotal * discount_pct; final_price = subtotal - discount_amt
@@ -652,12 +696,11 @@ class FilamentManagerApp:
         try: os.startfile(DOCS_DIR)
         except Exception as e: messagebox.showerror("Error", f"Cannot open folder: {e}")
 
-    # --- TAB 2: INVENTORY ---
+    # --- TAB 2: INVENTORY (UPDATED FOR SPLIT COLUMNS) ---
     def build_inventory_tab(self):
         frame = ttk.Frame(self.tab_inventory, padding=10); frame.pack(fill="both", expand=True)
         add_frame = ttk.Labelframe(frame, text=" Add New Spool ", padding=10); add_frame.pack(fill="x", pady=5)
         
-        # Row 0
         ttk.Label(add_frame, text="Brand/Name:").grid(row=0, column=0, sticky="e")
         self.inv_name = ttk.Entry(add_frame, width=15); self.inv_name.grid(row=0, column=1, padx=5)
         
@@ -670,17 +713,13 @@ class FilamentManagerApp:
         self.inv_mat_var = tk.StringVar()
         self.cb_inv_mat = ttk.Combobox(add_frame, textvariable=self.inv_mat_var, width=10, 
             values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
-                    "PETG", "PETG Trans", "PCTG", 
-                    "TPU", "TPU 95A", 
-                    "ABS", "ASA", 
-                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", 
-                    "Other"))
+                    "PETG", "PETG Trans", "PCTG", "TPU", "TPU 95A", "ABS", "ASA", 
+                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", "Other"))
         self.cb_inv_mat.grid(row=0, column=5, padx=5)
         
         ttk.Label(add_frame, text="Color:").grid(row=0, column=6, sticky="e")
         self.inv_color = ttk.Entry(add_frame, width=10); self.inv_color.grid(row=0, column=7, padx=5)
         
-        # Row 1
         ttk.Label(add_frame, text="Cost ($):").grid(row=1, column=0, sticky="e")
         self.inv_cost = ttk.Entry(add_frame, width=6); self.inv_cost.insert(0,"20.00"); self.inv_cost.grid(row=1, column=1, padx=5)
         ttk.Label(add_frame, text="Weight (g):").grid(row=1, column=2, sticky="e", pady=5)
@@ -691,14 +730,12 @@ class FilamentManagerApp:
         ttk.Radiobutton(add_frame, text="Plastic", variable=self.tare_var, value=220).grid(row=1, column=5, padx=5)
         ttk.Radiobutton(add_frame, text="Cardboard", variable=self.tare_var, value=140).grid(row=1, column=6, columnspan=2, padx=5)
 
-        # NEW: Benchy Checkbox
         self.var_benchy = tk.BooleanVar(value=False)
         ttk.Checkbutton(add_frame, text="Benchy?", variable=self.var_benchy, bootstyle="round-toggle").grid(row=1, column=8, padx=5)
 
         self.btn_inv_action = ttk.Button(add_frame, text="Add Spool", command=self.save_spool, bootstyle="success"); self.btn_inv_action.grid(row=1, column=9, padx=5)
         ttk.Button(add_frame, text="Cancel", command=self.cancel_edit, bootstyle="secondary").grid(row=1, column=10, padx=5)
 
-        # Toolbar
         btn_box = ttk.Frame(frame); btn_box.pack(fill="x", pady=5)
         ttk.Button(btn_box, text="Edit Selected", command=self.edit_spool, bootstyle="primary").pack(side="left", padx=5)
         ttk.Button(btn_box, text="Set Material", command=self.bulk_set_material, bootstyle="info").pack(side="left", padx=5)
@@ -710,18 +747,18 @@ class FilamentManagerApp:
         self.inv_filter_var = tk.StringVar(); self.inv_filter_var.trace("w", lambda n, i, m: self.refresh_inventory_list())
         ttk.Entry(filter_frame, textvariable=self.inv_filter_var).pack(side="left", fill="x", expand=True, padx=5)
 
-        # NEW: Benchy Column using Tree Column (#0)
-        self.tree = ttk.Treeview(frame, columns=("ID", "Name", "Material", "Color", "Weight", "Cost"), show="tree headings", height=12, bootstyle="info")
+        # UPDATE: Separate columns for Image (#0) and Benchy
+        self.tree = ttk.Treeview(frame, columns=("ID", "Name", "Material", "Color", "Weight", "Cost", "Benchy"), show="tree headings", height=12, bootstyle="info")
         
-        # Configure #0 Column (The Tree/Icon Column)
-        self.tree.column("#0", width=80, anchor="center")
-        self.tree.heading("#0", text="Benchy")
+        self.tree.column("#0", width=60, anchor="center")
+        self.tree.heading("#0", text="Color") # Image Column is now just Color
         
         self.tree.column("ID", width=50, anchor="center")
+        self.tree.column("Benchy", width=70, anchor="center") # New Text Column
         self.tree.column("Weight", width=80, anchor="e")
         self.tree.column("Cost", width=80, anchor="e")
         
-        cols = ("ID", "Name", "Material", "Color", "Weight", "Cost")
+        cols = ("ID", "Name", "Material", "Color", "Weight", "Cost", "Benchy")
         for c in cols: self.tree.heading(c, text=c, command=lambda _col=c: self.sort_column(_col, False))
         
         self.lbl_inv_total = ttk.Label(frame, text="Total: 0 Spools", font=("Segoe UI", 10, "bold"), bootstyle="secondary-inverse", anchor="w", padding=5)
@@ -732,16 +769,13 @@ class FilamentManagerApp:
         self.refresh_inventory_list()
 
     def auto_gen_id(self):
-        # Find numeric IDs
         max_id = 0
         for item in self.inventory:
             try:
                 val = int(item.get('id', 0))
                 if val > max_id: max_id = val
             except: pass
-        
-        # Next ID is max + 1
-        next_id = str(max_id + 1).zfill(3) # e.g. "045"
+        next_id = str(max_id + 1).zfill(3)
         self.inv_id.delete(0, tk.END)
         self.inv_id.insert(0, next_id)
 
@@ -768,13 +802,17 @@ class FilamentManagerApp:
         for item in sorted_inv: 
             mat = item.get('material', 'Unknown'); fid = item.get('id', '')
             has_benchy = item.get('has_benchy', False)
+            color_name = item.get('color', 'grey')
             
-            # Select Icon
-            display_img = self.icon_yes if has_benchy else self.icon_no
+            # Generate Color Swatch ONLY
+            color_icon = self.generate_color_swatch(color_name)
+            self.icon_cache[item['id']] = color_icon 
 
-            # Filter logic
+            # Benchy Text
+            benchy_txt = "✅ Yes" if has_benchy else "❌ No"
+
             search_str = f"{item['name']} {mat} {fid}".lower()
-            if "benchy" in filter_txt: # Special filter keyword
+            if "benchy" in filter_txt: 
                 if "yes" in filter_txt and not has_benchy: continue
                 if "no" in filter_txt and has_benchy: continue
             elif filter_txt and filter_txt not in search_str: continue
@@ -788,8 +826,7 @@ class FilamentManagerApp:
             if count % 2 != 0: tags.append('oddrow')
             
             real_idx = self.inventory.index(item)
-            # Insert using image in #0 column, other data in values
-            self.tree.insert("", "end", iid=real_idx, text="", image=display_img, values=(fid, item['name'], mat, item['color'], f"{w:.1f}", item['cost']), tags=tuple(tags))
+            self.tree.insert("", "end", iid=real_idx, text="", image=color_icon, values=(fid, item['name'], mat, item['color'], f"{w:.1f}", item['cost'], benchy_txt), tags=tuple(tags))
             
         self.lbl_inv_total.config(text=f"  Total: {count} Spools  |  {total_grams/1000:.1f} kg Filament  |  Est. Value: ${total_value:.2f}")
         self.update_row_colors()
@@ -1183,21 +1220,94 @@ class FilamentManagerApp:
 
     def build_reference_tab(self):
         main_frame = ttk.Frame(self.tab_ref, padding=10); main_frame.pack(fill="both", expand=True)
-        left_col = ttk.Labelframe(main_frame, text=" Spool Estimator ", padding=10); left_col.pack(side="left", fill="both", expand=True, padx=5)
-        try:
-            spool_img = Image.open(IMAGE_FILE); spool_img.thumbnail((550, 750)); self.ref_img_data = ImageTk.PhotoImage(spool_img); ttk.Label(left_col, image=self.ref_img_data).pack(anchor="center", pady=10)
-        except: ttk.Label(left_col, text="[spool_reference.png] missing").pack(pady=20)
-        right_col = ttk.Labelframe(main_frame, text=" Field Manual ", padding=10); right_col.pack(side="right", fill="both", expand=True, padx=5)
-        search_frame = ttk.Frame(right_col); search_frame.pack(fill="x", pady=5)
-        ttk.Label(search_frame, text="🔍 Search Issue:").pack(side="left", padx=5); self.entry_search = ttk.Entry(search_frame); self.entry_search.pack(side="left", fill="x", expand=True, padx=5)
+        
+        # --- NOTEBOOK FOR ALL REFERENCES (Data + Images) ---
+        self.gallery_notebook = ttk.Notebook(main_frame)
+        self.gallery_notebook.pack(fill="both", expand=True)
+        
+        # --- TAB 1: FILAMENT DATA TABLE (The Fix) ---
+        f_tab = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_tab, text=" 📊 Filament Guide ")
+        
+        cols = ("Material", "Nozzle Type", "Print Temp", "Bed Temp", "Fan Speed", "Difficulty", "Notes")
+        fil_tree = ttk.Treeview(f_tab, columns=cols, show="headings", height=20, bootstyle="info")
+        for c in cols: fil_tree.heading(c, text=c)
+        fil_tree.column("Material", width=120)
+        fil_tree.column("Nozzle Type", width=150) # The column you asked for
+        fil_tree.column("Print Temp", width=100)
+        fil_tree.column("Bed Temp", width=100)
+        fil_tree.column("Fan Speed", width=80)
+        fil_tree.column("Difficulty", width=80)
+        fil_tree.column("Notes", width=300)
+        fil_tree.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # The Data from your chart + Nozzle Info
+        data = [
+            ("PLA", "Brass / Standard", "190-220°C", "45-60°C", "100%", "Low", "Easy to print. Keep door open."),
+            ("PLA Silk", "Brass / Standard", "210-230°C", "50-60°C", "100%", "Low-Med", "Print slow/hot for shine. Expands."),
+            ("PLA Carbon Fiber", "Hardened Steel", "210-230°C", "50-60°C", "100%", "Med", "Abrasive! Wears out brass nozzles."),
+            ("PLA Glow", "Hardened Steel", "210-230°C", "50-60°C", "100%", "Med", "Highly abrasive."),
+            ("PLA Wood", "Hardened (0.6mm)", "190-210°C", "50-60°C", "100%", "Med", "Clogs easily. Use larger nozzle."),
+            ("PETG", "Brass / Standard", "230-250°C", "70-85°C", "30-50%", "Med", "Stringy. Sticks well to PEI."),
+            ("TPU (Flex)", "Brass / Standard", "220-240°C", "40-60°C", "50-100%", "High", "Print SLOW (20mm/s). Dry first."),
+            ("ABS", "Brass / Standard", "240-260°C", "90-110°C", "0%", "High", "Needs enclosure. Toxic fumes."),
+            ("ASA", "Brass / Standard", "240-260°C", "90-110°C", "0-20%", "High", "UV Resistant. Outdoor use."),
+            ("Nylon (PA)", "Hardened Steel", "250-270°C", "70-90°C", "0%", "Very High", "Must be dry box fed. Warps."),
+            ("PC", "Hardened Steel", "260-280°C", "110°C+", "0%", "Very High", "Strongest. High heat resistance.")
+        ]
+        
+        for idx, row in enumerate(data):
+            tag = 'odd' if idx % 2 else 'even'
+            fil_tree.insert("", "end", values=row, tags=(tag,))
+        
+        fil_tree.tag_configure('odd', background='#f0f0f0')
+
+        # --- TAB 2+: DYNAMIC IMAGES ---
+        image_files = []
+        if os.path.exists(IMAGE_FILE): image_files.append(IMAGE_FILE)
+        
+        search_folder = os.path.dirname(IMAGE_FILE)
+        extensions = ["png", "jpg", "jpeg"]
+        for ext in extensions:
+            pattern = os.path.join(search_folder, f"ref_*.{ext}")
+            found_extras = glob.glob(pattern)
+            image_files.extend(found_extras)
+        
+        image_files = list(set(image_files)) # Remove duplicates
+        
+        for img_path in image_files:
+            try:
+                tab_frame = ttk.Frame(self.gallery_notebook)
+                fname = os.path.basename(img_path)
+                if "spool_reference" in fname: title = "Estimator"
+                else: title = os.path.splitext(fname)[0].replace("ref_", "")
+                
+                self.gallery_notebook.add(tab_frame, text=f" 📷 {title} ")
+                
+                pil_img = Image.open(img_path)
+                pil_img.thumbnail((800, 600)) # Larger view for charts
+                tk_img = ImageTk.PhotoImage(pil_img)
+                self.ref_images_cache.append(tk_img)
+                
+                ttk.Label(tab_frame, image=tk_img).pack(anchor="center", pady=10)
+            except: pass
+
+        # --- TAB LAST: FIELD MANUAL ---
+        man_tab = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(man_tab, text=" 📖 Manual ")
+        
+        search_frame = ttk.Frame(man_tab); search_frame.pack(fill="x", pady=5)
+        ttk.Label(search_frame, text="🔍 Search Issue:").pack(side="left", padx=5)
+        self.entry_search = ttk.Entry(search_frame); self.entry_search.pack(side="left", fill="x", expand=True, padx=5)
         ttk.Button(search_frame, text="Search", command=self.perform_search, bootstyle="primary").pack(side="left")
-        self.entry_search.bind("<Return>", lambda e: self.perform_search())
-        ttk.Label(right_col, text="Select Topic:").pack(anchor="w", pady=(5, 0)); self.mat_var = tk.StringVar()
-        self.combo_vals = ("PLA", "Silk PLA", "PETG", "ABS / ASA", "TPU", "Bambu Lab Profiles", "First Layer Guide", "Slicer Basics", "Under-Extrusion", "Wet Filament", "Hardware Maintenance", "PEI Sheet", "Troubleshooting Guide")
-        self.mat_combo = ttk.Combobox(right_col, textvariable=self.mat_var, values=self.combo_vals, state="readonly"); self.mat_combo.current(0); self.mat_combo.pack(fill="x", pady=5)
-        self.txt_info = tk.Text(right_col, font=("Consolas", 11), wrap="word", bg="#f0f0f0", relief="sunken", padx=15, pady=15); self.txt_info.pack(fill="both", expand=True, pady=10)
-        self.btn_web_help = ttk.Button(right_col, text="🌐 Open Online Guide", command=self.open_current_link, bootstyle="info-outline"); self.btn_web_help.pack(fill="x", pady=5)
-        self.mat_combo.bind("<<ComboboxSelected>>", self.update_material_view); self.update_material_view(None)
+        
+        self.mat_var = tk.StringVar()
+        self.combo_vals = list(self.materials_data.keys())
+        self.mat_combo = ttk.Combobox(man_tab, textvariable=self.mat_var, values=self.combo_vals, state="readonly")
+        self.mat_combo.current(0); self.mat_combo.pack(fill="x", pady=5)
+        
+        self.txt_info = tk.Text(man_tab, font=("Consolas", 11), wrap="word", bg="#f0f0f0", relief="sunken", padx=15, pady=15)
+        self.txt_info.pack(fill="both", expand=True, pady=10)
+        self.mat_combo.bind("<<ComboboxSelected>>", self.update_material_view)
+        self.update_material_view(None)
 
     def perform_search(self):
         query = self.entry_search.get().lower().strip()
@@ -1214,8 +1324,6 @@ class FilamentManagerApp:
     def update_material_view(self, event):
         key = self.mat_var.get(); text_data = self.materials_data.get(key, "No Data")
         self.txt_info.config(state="normal"); self.txt_info.delete("1.0", tk.END); self.txt_info.insert("1.0", text_data); self.txt_info.config(state="disabled")
-        if key in self.resource_links: self.btn_web_help.config(state="normal")
-        else: self.btn_web_help.config(state="disabled")
 
     def open_current_link(self):
         key = self.mat_var.get(); url = self.resource_links.get(key); 
@@ -1223,36 +1331,35 @@ class FilamentManagerApp:
 
     def init_resource_links(self):
         self.resource_links = {
-            "PLA": "https://all3dp.com/1/pla-filament-3d-printing-guide/",
-            "Silk PLA": "https://all3dp.com/2/silk-filament-guide/",
-            "PETG": "https://all3dp.com/2/petg-3d-printing-temperature-nozzle-bed-settings/",
+            "PLA Basics": "https://all3dp.com/1/pla-filament-3d-printing-guide/",
+            "PLA Specials (Silk/Dual/Tri)": "https://all3dp.com/2/silk-filament-guide/",
+            "PETG Standard": "https://all3dp.com/2/petg-3d-printing-temperature-nozzle-bed-settings/",
+            "Transparent (PETG/PCTG)": "https://all3dp.com/2/transparent-3d-printing-guide/",
             "ABS / ASA": "https://all3dp.com/2/abs-print-settings-temperature-speed-retraction/",
-            "TPU": "https://all3dp.com/2/3d-printing-tpu-filament-all-you-need-to-know/",
+            "TPU (Flexible)": "https://all3dp.com/2/3d-printing-tpu-filament-all-you-need-to-know/",
+            "Nylon / PC (Engineering)": "https://all3dp.com/2/nylon-3d-printing-guide/",
+            "Abrasives (CF / Glow / Wood)": "https://all3dp.com/2/carbon-fiber-3d-printer-filament-guide/",
             "Bambu Lab Profiles": "https://wiki.bambulab.com/en/home",
             "First Layer Guide": "https://ellis3dp.com/Print-Tuning-Guide/articles/first_layer_squish.html",
-            "Slicer Basics": "https://help.prusa3d.com/category/prusaslicer_204",
-            "Under-Extrusion": "https://www.simplify3d.com/resources/print-quality-troubleshooting/under-extrusion/",
-            "Wet Filament": "https://www.matterhackers.com/news/filament-drying-101",
+            "Wet Filament Symptoms": "https://www.matterhackers.com/news/filament-drying-101",
             "Hardware Maintenance": "https://all3dp.com/2/3d-printer-maintenance-checklist/",
-            "PEI Sheet": "https://help.prusa3d.com/article/flexible-steel-sheets-guide_2738",
-            "Troubleshooting Guide": "https://www.simplify3d.com/resources/print-quality-troubleshooting/"
         }
 
     def init_materials_data(self):
         self.materials_data = {
-            "PLA": ("MATERIAL: PLA (Polylactic Acid)\n==================================================\nNozzle:   190 – 220 °C\nBed:      45 – 60 °C\nFan:      100% (Always On)\nSpeed:    50 – 100+ mm/s\nEnclosure: NO (Keep door open)\n\n--- QUICK GUIDE ---\nBest For:    Beginners, visual models, prototypes.\nAdhesion:    Textured PEI (No Glue), Smooth PEI (Glue Optional), or Blue Tape.\nCritical:    Needs excellent cooling for overhangs.\n\n⚠️ COMMON ISSUES & FIXES:\n1. Curling Corners? -> Bed is dirty or too cold. Clean with soap.\n2. Heat Creep (Jams)? -> Printing too hot or enclosure is closed.\n3. Warping in Car? -> PLA melts at 55°C. Don't leave in hot cars."),
-            "Silk PLA": ("MATERIAL: Silk PLA (Shiny Blend)\n==================================================\nNozzle:   205 – 225 °C\nBed:      50 – 60 °C\nFan:      100%\nSpeed:    40 – 60 mm/s (SLOW)\nEnclosure: NO (Keep door open)\n\n--- QUICK GUIDE ---\nBest For:    Statues, vases, decorative items.\nAdhesion:    Standard PEI / Glue Stick.\nCritical:    Print SLOW and HOT for maximum shine.\n\n⚠️ COMMON ISSUES & FIXES:\n1. Dull Finish? -> Print hotter and slower.\n2. Clogs? -> 'Die Swell' (expansion) causes jams. Reduce flow 5%.\n3. Weak Parts? -> Silk has terrible layer adhesion. Do not use for mechanical parts."),
-            "PETG": ("MATERIAL: PETG (Polyethylene Terephthalate Glycol)\n==================================================\nNozzle:   230 – 250 °C\nBed:      70 – 85 °C\nFan:      30 – 50% (Low)\nSpeed:    40 – 60 mm/s\nEnclosure: NO (Draft-free room)\n\n--- QUICK GUIDE ---\nBest For:    Functional parts, snap-fits, outdoor use.\nAdhesion:    Textured PEI. AVOID SMOOTH GLASS (It fuses).\nCritical:    Raise Z-Offset +0.05mm. Don't squish the first layer.\n\n⚠️ COMMON ISSUES & FIXES:\n1. Stringing/Blobs? -> Filament is wet (Dry it!) or Flow is too high.\n2. Sticking too well? -> Use Glue Stick as a release agent.\n3. Poor Bridging? -> Increase fan speed for bridges only."),
-            "ABS / ASA": ("MATERIAL: ABS & ASA\n==================================================\nNozzle:   230 – 260 °C\nBed:      90 – 110 °C\nFan:      0% (OFF)\nSpeed:    40 – 60 mm/s\nEnclosure: YES (Mandatory)\n\n--- QUICK GUIDE ---\nBest For:    Car parts, high heat, acetone smoothing.\nAdhesion:    ABS Slurry (Acetone + Scrap) or Kapton Tape.\nInfo:        ASA is similar to ABS but UV resistant (doesn't yellow in sun).\n\n⚠️ COMMON ISSUES & FIXES:\n1. Layer Cracks? -> Drafts in the room or Fan was on. Use enclosure.\n2. Warping off Bed? -> Use a large Brim (5-10mm) and hotter bed.\n3. Fumes? -> These release Styrene. Ventilate the room!"),
-            "TPU": ("MATERIAL: TPU (Flexible / Rubber)\n==================================================\nNozzle:   210 – 230 °C\nBed:      40 – 60 °C\nFan:      50 – 100%\nSpeed:    15 – 30 mm/s (VERY SLOW)\nEnclosure: NO\n\n--- QUICK GUIDE ---\nBest For:    Phone cases, tires, gaskets, drones.\nAdhesion:    Sticks too well to PEI. Use Glue Stick to release.\nCritical:    Disable Retraction on Bowden setups to prevent jams.\n\n⚠️ COMMON ISSUES & FIXES:\n1. Filament tangled in gears? -> Printing too fast. Slow down.\n2. Stringing? -> TPU strings naturally. Dry the filament.\n3. Under-extrusion? -> Loosen extruder tension arm."),
-            "Bambu Lab Profiles": ("=== BAMBU LAB CHEAT SHEET (X1/P1/A1) ===\n\n1. INFILL PATTERN: Gyroid (Always!)\n   Why? The nozzle hits 'Grid' or 'Cubic' infill at high speeds.\n\n2. WALL GENERATOR: Arachne\n   Why? Better quality on small text and variable width walls.\n\n3. TPU IN AMS? NO.\n   The Automatic Material System jams with flexible filament.\n   Use the external spool holder for TPU.\n   Limit 'Max Volumetric Speed' to 2.5 mm³/s in filament settings.\n\n4. CARDBOARD SPOOLS IN AMS\n   Risk: Cardboard dust clogs gears / Spools dent and jam.\n   Fix: Wrap edges in electrical tape OR print 'Spool Adapter Rings'."),
-            "First Layer Guide": ("=== THE FIRST LAYER (Z-OFFSET) ===\nThe #1 cause of print failure is the nozzle distance from the bed.\n\n1. NOZZLE TOO HIGH:\n   LOOKS LIKE: Round strands of spaghetti. Gaps between lines.\n   RESULT: Part pops off mid-print.\n   FIX: Lower Z-Offset (more negative number).\n\n2. NOZZLE TOO LOW:\n   LOOKS LIKE: Rough, sandpaper texture. Transparent layers.\n   RESULT: Clogged nozzle, Elephant's foot.\n   FIX: Raise Z-Offset.\n\n3. PERFECT SQUISH:\n   LOOKS LIKE: Flat surface, lines fused together, smooth touch.\n   TEST: Print a single layer square. It should be solid, not stringy."),
-            "Slicer Basics": ("=== SLICER BASICS (Terminology) ===\n\n1. PERIMETERS (WALLS)\n   - The outer shell. Strength comes from WALLS, not infill.\n   - Standard: 2 walls. Strong: 4 walls.\n\n2. INFILL\n   - The internal structure. 15-20% is standard.\n   - Use 'Gyroid' for best strength/speed balance.\n\n3. SUPPORTS\n   - Scaffolding for overhangs > 45 degrees.\n   - Use 'Tree/Organic' supports to save plastic and time.\n\n4. BRIM vs. SKIRT\n   - Skirt: A line around the print to prime the nozzle (Does not touch part).\n   - Brim: A flat hat attached to the part to prevent warping."),
-            "Under-Extrusion": ("=== UNDER-EXTRUSION (Gaps/Spongy Parts) ===\n\nSYMPTOM: Missing layers, gaps in walls, weak infill.\nCAUSE: The printer can't push plastic fast enough.\n\n1. THE 'CLICKING' SOUND:\n   - Extruder gear is slipping because nozzle is blocked.\n   - FIX: Check for clog, increase temp 5°C, or slow down.\n\n2. PARTIAL CLOG:\n   - Filament comes out curling to one side.\n   - FIX: Perform a 'Cold Pull' (Heat to 200, cool to 90, yank filament out).\n\n3. CRACKED EXTRUDER ARM:\n   - Common on Creality/Ender printers.\n   - FIX: Inspect the plastic arm near the gears for hairline cracks."),
-            "Wet Filament": ("=== WET FILAMENT DIAGNOSIS ===\n\nPlastic absorbs moisture from the air (Hygroscopic).\nEven new vacuum-sealed rolls can be wet!\n\nSYMPTOMS:\n1. Popping/Hissing sounds while printing.\n2. Excessive Stringing that retraction settings won.t fix.\n3. Rough/Fuzzy surface texture.\n4. Brittle filament (snaps when you bend it).\n\nFIX: You must dry it.\n- Filament Dryer: 45°C (PLA) / 65°C (PETG) for 6 hours.\n- Food Dehydrator works well too.\n- DO NOT use a kitchen oven (inaccurate temps will melt spool)."),
-            "Hardware Maintenance": ("=== MONTHLY HARDWARE CHECK ===\n\n1. ECCENTRIC NUTS (Wobble Check):\n   - Grab the print head and bed. Do they wobble?\n   - FIX: Tighten the single nut on the inner wheel until wobble stops.\n\n2. BELT TENSION:\n   - Loose belts = Oval circles and layer shifts.\n   - Tight belts = Motor strain.\n   - FIX: Should twang like a low bass guitar string.\n\n3. CLEAN THE Z-ROD:\n   - Clean old grease/dust off the tall lead screw.\n   - Apply fresh PTFE lube or White Lithium Grease."),
-            "PEI Sheet": ("=== PEI SHEET (The Gold Standard) ===\n\nPolyetherimide (PEI) is the most popular modern print surface.\n\n1. TEXTURED PEI (Rough/Gold):\n   - Great for PETG and PLA.\n   - NO GLUE needed for PLA. Let the bed cool, and prints pop off.\n\n2. SMOOTH PEI (Flat/Black/Gold):\n   - Gives a mirror finish to the bottom of prints.\n   - WARNING: PETG and TPU stick too well to smooth PEI and can rip the sheet.\n   - FIX: Use Glue Stick as a release agent for PETG/TPU."),
-            "Troubleshooting Guide": ("=== UNIVERSAL TROUBLESHOOTING GUIDE ===\n\n1. WARPING (Corners lifting off bed)\n   WHY? Plastic shrinks as it cools. Cool air pulls corners up.\n   FIX: \n   - Clean bed with Dish Soap (Grease is the enemy).\n   - Raise Bed Temp 5-10°C.\n   - Use a 'Brim' in slicer.\n   - Stop drafts (Close windows/doors).\n\n2. STRINGING (Cobwebs between parts)\n   WHY? Nozzle leaking pressure while moving.\n   FIX:\n   - Dry your filament (Wet filament = steam = pressure).\n   - Lower Nozzle Temp 5-10°C.\n   - Increase Retraction Distance.\n\n3. ELEPHANT'S FOOT (Bottom layers flared out)\n   WHY? Bed is too hot or Nozzle is too close, squishing layers.\n   FIX:\n   - Lower Bed Temp 5°C.\n   - Baby-step Z-Offset UP slightly during first layer.\n\n4. LAYER SHIFT (Staircase effect)\n   WHY? Printer hit something or belts slipped.\n   FIX:\n   - Tighten Belts (Should twang like a guitar string).\n   - Check if nozzle hit a curled-up overhang.")
+            "PLA Basics": ("MATERIAL: Standard PLA\n========================\nNozzle: 190-220°C | Bed: 45-60°C\n\nThe standard workhorse. Keep the door OPEN and lid OFF to prevent heat creep (clogs). If corners curl, clean the bed with soap."),
+            "PLA Specials (Silk/Dual/Tri)": ("MATERIAL: Silk, Dual-Color, Tri-Color\n=======================================\nNozzle: 210-230°C (Print Hotter!)\nSpeed:  Slow down outer walls (30-50mm/s)\n\n1. SHINE: The slower and hotter you print, the shinier it gets.\n2. CLOGS: Silk expands ('die swell'). If it jams, lower Flow Ratio to 0.95.\n3. DUAL COLOR: Ensure your 'Flush Volumes' are high enough so colors don't look muddy."),
+            "PLA Matte": ("MATERIAL: Matte PLA\n========================\nNozzle: 200-220°C\n\n1. TEXTURE: Hides layer lines beautifully.\n2. WEAKNESS: Matte PLA has weaker layer adhesion than regular PLA. Do not use for structural parts that need to hold weight."),
+            "Transparent (PETG/PCTG)": ("MATERIAL: Transparent / Clear Filaments\n=======================================\nTo get 'Glass-Like' parts:\n1. LAYER HEIGHT: 0.1mm or lower.\n2. SPEED: Very Slow (20-30 mm/s).\n3. INFILL: 100% Aligned Rectilinear (Do not use Gyroid/Grid).\n4. TEMP: Print +5°C hotter than normal to melt layers together completely."),
+            "PETG Standard": ("MATERIAL: PETG\n========================\nNozzle: 230-250°C | Bed: 70-85°C\n\n1. STICKING: Sticks TOO well to PEI. Use Glue Stick or Windex as a release agent.\n2. STRINGING: Wet PETG strings badly. Dry it if you see cobwebs.\n3. FAN: Keep fan low (30-50%) for better strength."),
+            "TPU (Flexible)": ("MATERIAL: TPU (95A / 85A)\n========================\nNozzle: 220-240°C | Speed: 20-40mm/s\n\n1. RETRACTION: Turn OFF or very low (0.5mm) to prevent jams.\n2. AMS/MMU: Do NOT put TPU in multi-material systems (it jams). Use external spool.\n3. HYGROSCOPIC: Absorbs water instantly. Must be dried before use."),
+            "ABS / ASA": ("MATERIAL: ABS & ASA\n========================\nNozzle: 240-260°C | Bed: 100°C+\nREQUIRED: Enclosure (Draft Shield)\n\n1. WARPING: Use a large Brim (5-10mm) and pre-heat the chamber.\n2. TOXICITY: ABS releases styrene. ASA is UV resistant (outdoor safe).\n3. COOLING: Turn cooling fan OFF for maximum strength."),
+            "Nylon / PC (Engineering)": ("MATERIAL: Nylon (PA) & Polycarbonate (PC)\n=========================================\nNozzle: 260-300°C | Bed: 100-110°C\n\n1. MOISTURE: These absorb water in minutes. You MUST print directly from a dry box.\n2. ADHESION: Use Magigoo PA or PVA Glue. They warp aggressively.\n3. NOZZLE: Use Hardened Steel (especially for CF/GF variants)."),
+            "Abrasives (CF / Glow / Wood)": ("⚠️ WARNING: ABRASIVE MATERIALS\n==============================\nIncludes: Carbon Fiber (CF), Glass Fiber (GF), Glow-in-the-Dark, Wood Fill.\n\n1. HARDWARE: Do NOT use a brass nozzle. It will wear out in <500g.\n   -> Use Hardened Steel, Ruby, or Tungsten Carbide nozzles.\n2. CLOGS: Use a 0.6mm nozzle if possible (0.4mm clogs easily with Wood/CF).\n3. PATH: These filaments can cut through plastic PTFE tubes over time."),
+            "Bambu Lab Profiles": ("=== BAMBU LAB CHEAT SHEET ===\n\n1. INFILL: Gyroid (Prevents nozzle scraping).\n2. WALLS: Arachne (Better for variable widths).\n3. SILENT MODE: Cuts speed by 50%. Use for tall/wobbly prints.\n4. AUX FAN: Turn OFF for ABS/ASA/PETG to prevent warping."),
+            "First Layer Guide": ("=== Z-OFFSET DIAGNOSIS ===\n1. GAPS between lines? -> Nozzle too high. Lower Z-Offset.\n2. ROUGH / RIPPLES? -> Nozzle too low. Raise Z-Offset.\n3. PEELING? -> Wash plate with Dish Soap & Water (IPA is not enough)."),
+            "Wet Filament Symptoms": ("=== IS MY FILAMENT WET? ===\n\n1. POPPING NOISES: Steam escaping the nozzle.\n2. FUZZY TEXTURE: Surface looks rough.\n3. WEAKNESS: Parts snap easily.\n\nFIX: Dry it.\nPLA: 45°C (4-6h)\nPETG: 65°C (6h)\nNylon: 75°C (12h+)"),
+            "Hardware Maintenance": ("=== MONTHLY CHECKLIST ===\n1. CLEAN RODS: Wipe old grease, apply fresh White Lithium Grease.\n2. BELTS: Pluck them like a guitar string. Low note = too loose.\n3. SCREWS: Check frame screws (thermal expansion loosens them).")
         }
 
     # --- TAB 5: MAINTENANCE TRACKER ---
@@ -1275,11 +1382,12 @@ class FilamentManagerApp:
     def init_default_maintenance(self):
         defaults = [
             {"task": "Clean Build Plate (Soap)", "freq": "Daily", "last": "Never"},
-            {"task": "Check Belt Tension", "freq": "Monthly", "last": "Never"},
-            {"task": "Lubricate Z-Rods", "freq": "Quarterly", "last": "Never"},
+            {"task": "Check Nozzle Wear (Abrasives)", "freq": "Monthly", "last": "Never"},
+            {"task": "Check Bowden/PTFE Tubes", "freq": "Monthly", "last": "Never"},
             {"task": "Clean Extruder Gears", "freq": "Monthly", "last": "Never"},
-            {"task": "Tighten Eccentric Nuts", "freq": "Monthly", "last": "Never"},
-            {"task": "Dry Filament", "freq": "As Needed", "last": "Never"}
+            {"task": "Lubricate Z-Rods", "freq": "Quarterly", "last": "Never"},
+            {"task": "Tighten Frame Screws", "freq": "Quarterly", "last": "Never"},
+            {"task": "Replace/Charge Desiccant", "freq": "As Needed", "last": "Never"}
         ]
         self.maintenance = defaults
         self.save_json(self.maintenance, MAINT_FILE)
@@ -1304,6 +1412,6 @@ class FilamentManagerApp:
         messagebox.showinfo("Done", f"Marked '{self.maintenance[idx]['task']}' as done today!")
 
 if __name__ == "__main__":
-    app = ttk.Window(themename="flatly") # BOOTSTRAP INIT
+    app = ttk.Window(themename="flatly")
     FilamentManagerApp(app)
     app.mainloop()
