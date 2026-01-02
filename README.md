@@ -1,4 +1,4 @@
-# 3D Print Shop Manager 🚀 (v13.9)
+# 3D Print Shop Manager 🚀 (v14)
 
 **The "All-in-One" ERP tool for 3D printing businesses and hobbyists.**
 
@@ -8,7 +8,7 @@ This Python application combines a **Business Manager** (Inventory, Quoting, Rec
 
 ---
 
-## ✨ New in v13.9
+## ✨ New in v14
 * **📊 Digital Filament Guide:** No more blurry charts. A crisp, searchable, sortable table of Temps, Fans, and Nozzle types for every material.
 * **🖼️ Dynamic Reference Gallery:** Automatically loads any reference image (`ref_*.png` or `ref_*.jpg`) you drop into the folder as a new tab.
 * **📈 Smart Analytics:** Dashboard graph now shows exact dollar amounts for monthly net profit.
@@ -46,4 +46,5 @@ This Python application combines a **Business Manager** (Inventory, Quoting, Rec
 ---
 
 ## ⚖️ License
+
 Free to use for personal or commercial printing businesses. Happy Printing!
