@@ -11,7 +11,6 @@ import webbrowser
 import ctypes.wintypes
 from datetime import datetime, timedelta
 from PIL import Image, ImageTk, ImageDraw
-import difflib
 import zipfile
 import urllib.request
 import re
@@ -29,7 +28,7 @@ except ImportError:
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v13.9 (Digital Filament Guide)"
+VERSION = "v14.1 (Stability Update)"
 
 # 🔧 GITHUB SETTINGS
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
@@ -52,6 +51,7 @@ def get_app_data_folder():
 CONFIG_FILE = os.path.join(get_app_data_folder(), "config.json")
 
 def get_data_path():
+    # 1. Check Config Override (Useful for Test Zone)
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, 'r') as f:
@@ -61,6 +61,7 @@ def get_data_path():
                     return custom_path
         except: pass
 
+    # 2. Priority: Check for Cloud Storage roots
     user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
     cloud_candidates = [
         os.path.join(user_profile, "Dropbox"),
@@ -117,6 +118,9 @@ class FilamentManagerApp:
         self.root.title(f"3D Print Shop Manager ({VERSION})")
         self.root.geometry("1300x950")
         
+        # 1. Perform Auto-Backup on Launch
+        self.perform_auto_backup()
+
         self.defaults = self.load_sticky_settings()
         self.icon_cache = {} 
         self.ref_images_cache = [] 
@@ -173,6 +177,36 @@ class FilamentManagerApp:
     # --- HELPERS ---
     def load_icons(self):
         pass
+
+    def perform_auto_backup(self):
+        """Silently zips DB files to 'Backups' folder on startup."""
+        try:
+            backup_dir = os.path.join(DATA_DIR, "Backups")
+            if not os.path.exists(backup_dir): os.makedirs(backup_dir)
+            
+            # Create Backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            zip_path = os.path.join(backup_dir, f"AutoBackup_{timestamp}.zip")
+            
+            # Check if source files exist before zipping
+            has_files = False
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                if os.path.exists(DB_FILE): zipf.write(DB_FILE, arcname="filament_inventory.json"); has_files=True
+                if os.path.exists(HISTORY_FILE): zipf.write(HISTORY_FILE, arcname="sales_history.json"); has_files=True
+                if os.path.exists(MAINT_FILE): zipf.write(MAINT_FILE, arcname="maintenance_log.json"); has_files=True
+                if os.path.exists(QUEUE_FILE): zipf.write(QUEUE_FILE, arcname="job_queue.json"); has_files=True
+            
+            # If no files were found, remove empty zip
+            if not has_files:
+                os.remove(zip_path)
+                return
+
+            # Cleanup: Keep only last 5 backups
+            backups = sorted(glob.glob(os.path.join(backup_dir, "AutoBackup_*.zip")))
+            while len(backups) > 5:
+                os.remove(backups.pop(0))
+        except Exception:
+            pass # Fail silently on startup backups
 
     def load_json(self, filepath):
         if not os.path.exists(filepath): return []
@@ -530,6 +564,11 @@ class FilamentManagerApp:
                 entry_str = f"{id_prefix}{f['name']} ({mat} - {col}) - {int(f['weight'])}g"
                 if entry_str == selected_text: found_spool = f; break
             if not found_spool: messagebox.showerror("Error", "Selected spool not found."); return
+            
+            # Note: We do NOT hard stop here. The 'Last Line of Defense' is in deduct_inventory.
+            if grams > found_spool['weight']:
+                messagebox.showwarning("Low Stock", f"Warning: This job requires {grams}g, but the spool only has {int(found_spool['weight'])}g remaining.")
+
             cost = (found_spool['cost'] / 1000.0) * grams
             self.current_job_filaments.append({"spool": found_spool, "grams": grams, "cost": cost})
             mat = found_spool.get('material', 'PLA'); col = found_spool.get('color', 'Unknown')
@@ -569,15 +608,40 @@ class FilamentManagerApp:
             if self.current_job_filaments: messagebox.showerror("Error", "Check inputs")
 
     def deduct_inventory(self):
+        # 1. First Confirmation
         if not messagebox.askyesno("Confirm", "Finalize Sale?"): return
+
+        # 2. NEW: Pre-Check for Negative Inventory
+        warnings = []
+        for item in self.current_job_filaments:
+            current_w = item['spool']['weight']
+            needed_w = item['grams']
+            if (current_w - needed_w) < 0:
+                warnings.append(f"• {item['spool']['name']}: Has {current_w:.0f}g, Needs {needed_w:.0f}g")
+        
+        # 3. If negatives found, force a second confirmation
+        if warnings:
+            msg = "⚠️ WARNING: The following spools will go into NEGATIVE quantity:\n\n" + "\n".join(warnings) + "\n\nProceed anyway?"
+            if not messagebox.askyesno("Negative Inventory", msg, icon='warning'):
+                return
+
+        # 4. Commit Changes
         items_snapshot = []
         for item in self.current_job_filaments:
             item['spool']['weight'] -= item['grams']
             items_snapshot.append({"name": item['spool']['name'], "material": item['spool'].get('material', 'Unknown'), "color": item['spool'].get('color', 'Unknown'), "grams": item['grams']})
+        
         self.save_json(self.inventory, DB_FILE)
+        
         rec = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "job": self.entry_job_name.get() or "Unknown", "cost": self.calc_vals['cost'], "sold_for": self.calc_vals['price'], "is_donation": self.var_donate.get(), "profit": self.calc_vals['profit'], "items": items_snapshot}
-        self.history.append(rec); self.save_json(self.history, HISTORY_FILE)
-        self.entry_job_name.delete(0, tk.END); self.clear_job(); self.update_filament_dropdown(); self.refresh_dashboard()
+        self.history.append(rec)
+        self.save_json(self.history, HISTORY_FILE)
+        
+        self.entry_job_name.delete(0, tk.END)
+        self.clear_job()
+        self.update_filament_dropdown()
+        self.refresh_dashboard()
+        self.refresh_inventory_list() 
         messagebox.showinfo("Success", "Inventory Updated!")
 
     def log_failure(self):
@@ -628,17 +692,64 @@ class FilamentManagerApp:
         sel = self.queue_tree.selection()
         if not sel: return
         idx = int(sel[0]); job = self.queue[idx]
+        
         if not messagebox.askyesno("Confirm", f"Mark '{job['job']}' as complete?\nThis will deduct materials now."): return
+        
+        # --- LOGIC START ---
+        
+        # 1. Match Spools & Check for Negatives
+        spool_map = [] # Stores tuple (spool_reference, grams_needed)
+        missing_spools = False
+        negative_warnings = []
+
         for needed in job['items']:
             found = False
             for spool in self.inventory:
+                # Fuzzy match logic
                 if (spool['name'] == needed['name'] and spool['color'] == needed['color'] and spool.get('material') == needed.get('material')):
-                    spool['weight'] -= needed['grams']; found = True; break
-            if not found: messagebox.showwarning("Inventory Mismatch", f"Could not find exact spool for: {needed['name']}")
+                    
+                    # Check if this will go negative
+                    if (spool['weight'] - needed['grams']) < 0:
+                        negative_warnings.append(f"• {spool['name']}: Has {spool['weight']:.0f}g, Needs {needed['grams']:.0f}g")
+                    
+                    spool_map.append((spool, needed['grams']))
+                    found = True
+                    break
+            if not found:
+                missing_spools = True
+
+        # 2. Handle "Missing" Spools (Deleted from inventory)
+        if missing_spools:
+             if not messagebox.askyesno("Missing Spool", "Some spools were not found in inventory (Orphaned).\n\nRecord the sale anyway without deducting materials?"):
+                 return
+             # If yes, we skip the deduction loop below but still save history
+             spool_map = [] 
+
+        # 3. Handle "Negative" Spools (Exists, but low weight)
+        if negative_warnings:
+            msg = "⚠️ WARNING: The following spools will go into NEGATIVE quantity:\n\n" + "\n".join(negative_warnings) + "\n\nProceed anyway?"
+            if not messagebox.askyesno("Negative Inventory", msg, icon='warning'):
+                return
+
+        # 4. Execute Deductions
+        for spool, grams in spool_map:
+            spool['weight'] -= grams
+
+        # 5. Save & Cleanup
         self.save_json(self.inventory, DB_FILE)
+        
         rec = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "job": job['job'], "cost": job['cost'], "sold_for": job['sold_for'], "is_donation": job.get('is_donation', False), "profit": job.get('profit', 0), "items": job['items']}
-        self.history.append(rec); self.save_json(self.history, HISTORY_FILE); del self.queue[idx]; self.save_json(self.queue, QUEUE_FILE)
-        self.refresh_queue_list(); self.refresh_history_list(); self.refresh_inventory_list(); self.refresh_dashboard(); messagebox.showinfo("Success", "Job Completed & Inventory Updated.")
+        self.history.append(rec)
+        self.save_json(self.history, HISTORY_FILE)
+        
+        del self.queue[idx]
+        self.save_json(self.queue, QUEUE_FILE)
+        
+        self.refresh_queue_list()
+        self.refresh_history_list()
+        self.refresh_inventory_list()
+        self.refresh_dashboard()
+        messagebox.showinfo("Success", "Job Completed & Inventory Updated.")
 
     def duplicate_queue_job(self):
         sel = self.queue_tree.selection()
