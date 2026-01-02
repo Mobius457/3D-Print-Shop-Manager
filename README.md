@@ -7,6 +7,7 @@ Stop guessing your prices. Stop failing prints. Stop losing track of your invent
 This Python application combines a **Business Manager** (Inventory, Quoting, Receipts) with a **Field Manual** (Maintenance, Digital Reference Guide). It features multi-user **Cloud Sync**, automatic **Data Backups**, and a built-in **Auto-Updater**.
 
 ![App Screenshot](spool_reference.png) 
+
 *(Note: Replace 'spool_reference.png' with a screenshot of your dashboard if you have one, otherwise remove this line)*
 
 --
@@ -83,5 +84,6 @@ This app is designed to work across multiple computers (e.g., Workshop PC and Of
 * **v13.5:** Added Matplotlib Analytics.
 
 --
+
 
 *Created by Mobius457 for the 3D Printing Community.*
