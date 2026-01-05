@@ -28,7 +28,7 @@ except ImportError:
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v14.1 (Stability Update)"
+VERSION = "v14.3 (Daily Backup Rotation)"
 
 # 🔧 GITHUB SETTINGS
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
@@ -179,14 +179,15 @@ class FilamentManagerApp:
         pass
 
     def perform_auto_backup(self):
-        """Silently zips DB files to 'Backups' folder on startup."""
+        """Creates a daily backup zip. Retains only the last 2 days to save space."""
         try:
             backup_dir = os.path.join(DATA_DIR, "Backups")
             if not os.path.exists(backup_dir): os.makedirs(backup_dir)
             
-            # Create Backup
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            zip_path = os.path.join(backup_dir, f"AutoBackup_{timestamp}.zip")
+            # 1. Create Today's Backup (Overwrite if exists to capture latest state of the day)
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            zip_name = f"AutoBackup_{today_str}.zip"
+            zip_path = os.path.join(backup_dir, zip_name)
             
             # Check if source files exist before zipping
             has_files = False
@@ -198,13 +199,17 @@ class FilamentManagerApp:
             
             # If no files were found, remove empty zip
             if not has_files:
-                os.remove(zip_path)
+                if os.path.exists(zip_path): os.remove(zip_path)
                 return
 
-            # Cleanup: Keep only last 5 backups
-            backups = sorted(glob.glob(os.path.join(backup_dir, "AutoBackup_*.zip")))
-            while len(backups) > 5:
-                os.remove(backups.pop(0))
+            # 2. Cleanup: Keep only the 2 most recent files (Today + Yesterday)
+            all_backups = sorted(glob.glob(os.path.join(backup_dir, "AutoBackup_*.zip")))
+            
+            while len(all_backups) > 2:
+                oldest = all_backups.pop(0) # Remove from list and delete file
+                try: os.remove(oldest)
+                except: pass
+
         except Exception:
             pass # Fail silently on startup backups
 
