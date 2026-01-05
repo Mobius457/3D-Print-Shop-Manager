@@ -8,20 +8,12 @@ import sys
 import shutil
 import glob
 import webbrowser
+import ctypes.wintypes
 from datetime import datetime, timedelta
 from PIL import Image, ImageTk, ImageDraw
 import zipfile
 import urllib.request
 import re
-
-# Import modular components
-from src.config import VERSION, GITHUB_RAW_URL, GITHUB_REPO_URL
-from src.storage import (
-    DATA_DIR, DB_FILE, HISTORY_FILE, MAINT_FILE, QUEUE_FILE, DOCS_DIR,
-    CONFIG_FILE, IMAGE_FILE,
-    load_json, save_json, perform_auto_backup, find_asset
-)
-from src.logic import calculate_print_cost
 
 # Try to import Matplotlib (Safe Failover if not installed)
 try:
@@ -30,6 +22,91 @@ try:
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
+
+# ======================================================
+# CONFIGURATION
+# ======================================================
+
+APP_NAME = "PrintShopManager"
+VERSION = "v14.1 (Stability Update)"
+
+# 🔧 GITHUB SETTINGS
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
+GITHUB_REPO_URL = "https://github.com/Mobius457/3D-Print-Shop-Manager/releases"
+
+# ======================================================
+# PATH & SYSTEM LOGIC
+# ======================================================
+
+def get_app_data_folder():
+    user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
+    if os.name == 'nt':
+        local = os.path.join(os.environ.get('LOCALAPPDATA', user_profile), APP_NAME)
+    else:
+        local = os.path.join(user_profile, ".local", "share", APP_NAME)
+    if not os.path.exists(local):
+        os.makedirs(local, exist_ok=True)
+    return local
+
+CONFIG_FILE = os.path.join(get_app_data_folder(), "config.json")
+
+def get_data_path():
+    # 1. Check Config Override (Useful for Test Zone)
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                cfg = json.load(f)
+                custom_path = cfg.get('data_folder', '')
+                if custom_path and os.path.exists(custom_path):
+                    return custom_path
+        except: pass
+
+    # 2. Priority: Check for Cloud Storage roots
+    user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
+    cloud_candidates = [
+        os.path.join(user_profile, "Dropbox"),
+        os.path.join(user_profile, "OneDrive"),
+        os.path.join(user_profile, "OneDrive - Personal"),
+        os.path.join(user_profile, "Google Drive"),
+    ]
+    if os.path.exists(user_profile):
+        for item in os.listdir(user_profile):
+            if "OneDrive" in item and os.path.isdir(os.path.join(user_profile, item)):
+                cloud_candidates.append(os.path.join(user_profile, item))
+
+    for root in cloud_candidates:
+        if os.path.exists(root):
+            app_folder = os.path.join(root, "PrintShopManager")
+            if os.path.exists(app_folder): return app_folder
+
+    return get_app_data_folder()
+
+DATA_DIR = get_data_path()
+if not os.path.exists(DATA_DIR):
+    try: os.makedirs(DATA_DIR, exist_ok=True)
+    except: DATA_DIR = get_app_data_folder()
+
+DB_FILE = os.path.join(DATA_DIR, "filament_inventory.json")
+HISTORY_FILE = os.path.join(DATA_DIR, "sales_history.json")
+MAINT_FILE = os.path.join(DATA_DIR, "maintenance_log.json")
+QUEUE_FILE = os.path.join(DATA_DIR, "job_queue.json")
+
+def get_real_windows_docs_path():
+    try:
+        buf = ctypes.create_unicode_buffer(ctypes.wintypes.MAX_PATH)
+        ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf)
+        return buf.value
+    except: return os.path.join(os.path.expanduser("~"), "Documents")
+
+DOCS_DIR = os.path.join(get_real_windows_docs_path(), "3D_Print_Receipts")
+if not os.path.exists(DOCS_DIR): os.makedirs(DOCS_DIR, exist_ok=True)
+
+def resource_path(relative_path):
+    try: base_path = sys._MEIPASS
+    except Exception: base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+IMAGE_FILE = resource_path("spool_reference.png")
 
 # ======================================================
 # MAIN APPLICATION
@@ -42,7 +119,7 @@ class FilamentManagerApp:
         self.root.geometry("1300x950")
 
         # 1. Perform Auto-Backup on Launch
-        perform_auto_backup()
+        self.perform_auto_backup()
 
         self.defaults = self.load_sticky_settings()
         self.icon_cache = {}
@@ -101,17 +178,50 @@ class FilamentManagerApp:
     def load_icons(self):
         pass
 
+    def perform_auto_backup(self):
+        """Silently zips DB files to 'Backups' folder on startup."""
+        try:
+            backup_dir = os.path.join(DATA_DIR, "Backups")
+            if not os.path.exists(backup_dir): os.makedirs(backup_dir)
+
+            # Create Backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            zip_path = os.path.join(backup_dir, f"AutoBackup_{timestamp}.zip")
+
+            # Check if source files exist before zipping
+            has_files = False
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                if os.path.exists(DB_FILE): zipf.write(DB_FILE, arcname="filament_inventory.json"); has_files=True
+                if os.path.exists(HISTORY_FILE): zipf.write(HISTORY_FILE, arcname="sales_history.json"); has_files=True
+                if os.path.exists(MAINT_FILE): zipf.write(MAINT_FILE, arcname="maintenance_log.json"); has_files=True
+                if os.path.exists(QUEUE_FILE): zipf.write(QUEUE_FILE, arcname="job_queue.json"); has_files=True
+
+            # If no files were found, remove empty zip
+            if not has_files:
+                os.remove(zip_path)
+                return
+
+            # Cleanup: Keep only last 5 backups
+            backups = sorted(glob.glob(os.path.join(backup_dir, "AutoBackup_*.zip")))
+            while len(backups) > 5:
+                os.remove(backups.pop(0))
+        except Exception:
+            pass # Fail silently on startup backups
+
     def load_json(self, filepath):
-        return load_json(filepath)
+        if not os.path.exists(filepath): return []
+        try:
+            with open(filepath, "r") as f: return json.load(f)
+        except: return []
 
     def save_json(self, data, filepath):
-        save_json(data, filepath)
+        with open(filepath, "w") as f: json.dump(data, f, indent=4)
 
     def load_all_data(self):
-        self.inventory = load_json(DB_FILE)
-        self.history = load_json(HISTORY_FILE)
-        self.maintenance = load_json(MAINT_FILE)
-        self.queue = load_json(QUEUE_FILE)
+        self.inventory = self.load_json(DB_FILE)
+        self.history = self.load_json(HISTORY_FILE)
+        self.maintenance = self.load_json(MAINT_FILE)
+        self.queue = self.load_json(QUEUE_FILE)
 
     def load_sticky_settings(self):
         defaults = {"markup": "2.5", "labor": "0.75", "waste": "20", "discount": "0"}
@@ -475,75 +585,25 @@ class FilamentManagerApp:
     def calculate_quote(self):
         if not self.current_job_filaments: return
         try:
-            # Gather inputs from UI
-            hours = float(self.entry_hours.get() or 0)
-            waste_pct = float(self.entry_waste.get()) / 100.0
-            process_fee = float(self.entry_processing.get())
-            markup = float(self.entry_markup.get())
-            discount_pct = float(self.entry_discount.get()) / 100.0
-
+            hours = float(self.entry_hours.get() or 0); waste = float(self.entry_waste.get()) / 100.0
+            process_fee = float(self.entry_processing.get()); markup = float(self.entry_markup.get()); discount_pct = float(self.entry_discount.get()) / 100.0
             self.save_sticky_settings()
 
-            # Material Cost Calc
             raw_mat_cost = sum(x['cost'] for x in self.current_job_filaments)
-            # We pass unit cost = 1 to the logic function because we already summed the cost based on grams.
-            # But wait, calculate_print_cost takes (grams, cost_per_gram).
-            # Let's adjust.
-            total_grams = sum(x['grams'] for x in self.current_job_filaments)
-
-            # If we have multiple spools with different costs, the simple function signature `grams, cost_per_gram` isn't perfect.
-            # However, `raw_mat_cost` is already calculated correctly per spool.
-            # So we can pass `grams=1` and `cost_per_gram=raw_mat_cost`.
-
-            result = calculate_print_cost(
-                grams=1,
-                material_cost_per_gram=raw_mat_cost, # Pre-calculated total raw cost
-                hours=hours,
-                machine_hourly_rate=0.75,
-                processing_fee=process_fee,
-                waste_pct=waste_pct,
-                markup=markup,
-                discount_pct=discount_pct,
-                is_donation=self.var_donate.get(),
-                round_to_nearest=self.var_round.get()
-            )
-
-            # Unpack result
-            mat_total = result["mat_total"]
-            machine_cost = result["machine_cost"]
-            base_cost = result["base_cost"]
-            subtotal = result["subtotal"]
-            discount_amt = result["discount_amt"]
-            final_price = result["final_price"]
-            profit = result["profit"]
-            margin = result["margin"]
-
-            # Store for other methods
-            self.calc_vals = {
-                "mat": mat_total,
-                "mach": machine_cost,
-                "proc": process_fee,
-                "cost": base_cost,
-                "price": final_price,
-                "profit": profit,
-                "margin": margin,
-                "disc_amt": discount_amt,
-                "hours": hours,
-                "grams": total_grams
-            }
-
-            txt = (f"--- COST BREAKDOWN ---\nMaterials:      ${mat_total:.2f} (w/ {waste_pct*100:.0f}% waste)\nMachine Time:   ${machine_cost:.2f} ({hours}h @ $0.75/hr)\nProcessing:     ${process_fee:.2f} (Labor/Paint)\n----------------------\nTOTAL COST:     ${base_cost:.2f}\n----------------------\nBase Price:     ${subtotal:.2f} (Markup {markup}x)\nDiscount:      -${discount_amt:.2f}\n----------------------\nFINAL PRICE:    ${final_price:.2f}\nNet Profit:     ${profit:.2f}")
+            mat_total = raw_mat_cost * (1 + waste); machine_cost = hours * 0.75; base_cost = mat_total + machine_cost + process_fee
+            subtotal = base_cost * markup; discount_amt = subtotal * discount_pct; final_price = subtotal - discount_amt
+            if self.var_round.get(): final_price = round(final_price)
+            if self.var_donate.get(): final_price = 0.00
+            profit = final_price - base_cost; margin = (profit / final_price * 100) if final_price > 0 else 0
+            self.calc_vals = {"mat": mat_total, "mach": machine_cost, "proc": process_fee, "cost": base_cost, "price": final_price, "profit": profit, "margin": margin, "disc_amt": discount_amt, "hours": hours, "grams": sum(x['grams'] for x in self.current_job_filaments)}
+            txt = (f"--- COST BREAKDOWN ---\nMaterials:      ${mat_total:.2f} (w/ {waste*100:.0f}% waste)\nMachine Time:   ${machine_cost:.2f} ({hours}h @ $0.75/hr)\nProcessing:     ${process_fee:.2f} (Labor/Paint)\n----------------------\nTOTAL COST:     ${base_cost:.2f}\n----------------------\nBase Price:     ${subtotal:.2f} (Markup {markup}x)\nDiscount:      -${discount_amt:.2f}\n----------------------\nFINAL PRICE:    ${final_price:.2f}\nNet Profit:     ${profit:.2f}")
             if self.var_donate.get(): txt += "\n(DONATION - Tax Write-off)"
-
             self.lbl_breakdown.config(text=txt)
-
             if self.var_donate.get(): self.lbl_profit_warn.config(text="DONATION", bootstyle="info")
             elif margin >= 50: self.lbl_profit_warn.config(text=f"Great Margin ({margin:.0f}%)", bootstyle="success")
             elif margin >= 30: self.lbl_profit_warn.config(text=f"Good Margin ({margin:.0f}%)", bootstyle="warning")
             else: self.lbl_profit_warn.config(text=f"Low Margin ({margin:.0f}%)", bootstyle="danger")
-
             for btn in [self.btn_deduct, self.btn_receipt, self.btn_queue, self.btn_fail]: btn.config(state="normal")
-
         except ValueError:
             if self.current_job_filaments: messagebox.showerror("Error", "Check inputs")
 
@@ -1461,3 +1521,8 @@ class FilamentManagerApp:
         self.save_json(self.maintenance, MAINT_FILE)
         self.refresh_maintenance_list()
         messagebox.showinfo("Done", f"Marked '{self.maintenance[idx]['task']}' as done today!")
+
+if __name__ == "__main__":
+    app = ttk.Window(themename="flatly")
+    FilamentManagerApp(app)
+    app.mainloop()
