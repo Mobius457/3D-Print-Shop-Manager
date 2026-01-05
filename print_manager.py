@@ -117,23 +117,23 @@ class FilamentManagerApp:
         self.root = root
         self.root.title(f"3D Print Shop Manager ({VERSION})")
         self.root.geometry("1300x950")
-        
+
         # 1. Perform Auto-Backup on Launch
         self.perform_auto_backup()
 
         self.defaults = self.load_sticky_settings()
-        self.icon_cache = {} 
-        self.ref_images_cache = [] 
+        self.icon_cache = {}
+        self.ref_images_cache = []
         self.load_all_data()
 
         if not self.maintenance: self.init_default_maintenance()
-        
+
         self.current_job_filaments = []
         self.calc_vals = {"mat_cost": 0, "overhead": 0, "labor": 0, "subtotal": 0, "total": 0, "profit": 0, "margin": 0, "hours": 0, "grams": 0}
         self.editing_index = None
         self.current_theme = "flatly"
         self.style = ttk.Style()
-        self.full_filament_list = [] 
+        self.full_filament_list = []
         self.sort_col = "ID"
         self.sort_reverse = False
 
@@ -166,7 +166,7 @@ class FilamentManagerApp:
 
         self.tab_ref = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_ref, text=" ℹ️ Reference ")
-        self.build_reference_tab() 
+        self.build_reference_tab()
 
         self.tab_maint = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_maint, text=" 🛠️ Maintenance ")
@@ -183,11 +183,11 @@ class FilamentManagerApp:
         try:
             backup_dir = os.path.join(DATA_DIR, "Backups")
             if not os.path.exists(backup_dir): os.makedirs(backup_dir)
-            
+
             # Create Backup
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             zip_path = os.path.join(backup_dir, f"AutoBackup_{timestamp}.zip")
-            
+
             # Check if source files exist before zipping
             has_files = False
             with zipfile.ZipFile(zip_path, 'w') as zipf:
@@ -195,7 +195,7 @@ class FilamentManagerApp:
                 if os.path.exists(HISTORY_FILE): zipf.write(HISTORY_FILE, arcname="sales_history.json"); has_files=True
                 if os.path.exists(MAINT_FILE): zipf.write(MAINT_FILE, arcname="maintenance_log.json"); has_files=True
                 if os.path.exists(QUEUE_FILE): zipf.write(QUEUE_FILE, arcname="job_queue.json"); has_files=True
-            
+
             # If no files were found, remove empty zip
             if not has_files:
                 os.remove(zip_path)
@@ -236,23 +236,23 @@ class FilamentManagerApp:
     def save_sticky_settings(self):
         new_defaults = {
             "markup": self.entry_markup.get(),
-            "labor": self.entry_processing.get(), 
+            "labor": self.entry_processing.get(),
             "waste": self.entry_waste.get(),
             "discount": self.entry_discount.get()
         }
         current_cfg = {}
         if os.path.exists(CONFIG_FILE):
-            try: 
+            try:
                 with open(CONFIG_FILE, 'r') as f: current_cfg = json.load(f)
             except: pass
-        
+
         current_cfg['calc_defaults'] = new_defaults
         with open(CONFIG_FILE, 'w') as f: json.dump(current_cfg, f)
 
     def generate_color_swatch(self, color_name):
         c_name = color_name.lower()
         hex_col = "#bdc3c7"
-        
+
         colors = {
             "red": "#e74c3c", "blue": "#3498db", "green": "#2ecc71", "black": "#2c3e50",
             "white": "#ecf0f1", "grey": "#95a5a6", "gray": "#95a5a6", "orange": "#e67e22",
@@ -260,18 +260,18 @@ class FilamentManagerApp:
             "silver": "#bdc3c7", "transparent": "#dfe6e9", "clear": "#dfe6e9", "brown": "#795548",
             "glow": "#55efc4", "wood": "#d35400", "silk": "#a29bfe", "teal": "#008080", "cyan": "#00FFFF"
         }
-        
+
         for k, v in colors.items():
             if k in c_name:
                 hex_col = v; break
-        
+
         img = Image.new('RGBA', (20, 20), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         draw.ellipse([2, 2, 18, 18], fill=hex_col, outline="black", width=1)
         return ImageTk.PhotoImage(img)
 
     def on_tab_change(self, event):
-        self.load_all_data() 
+        self.load_all_data()
         self.update_filament_dropdown()
         self.refresh_inventory_list()
         self.refresh_history_list()
@@ -380,21 +380,21 @@ class FilamentManagerApp:
 
         grid_frame = ttk.Frame(main); grid_frame.pack(fill="both", expand=True)
         grid_frame.columnconfigure(0, weight=1); grid_frame.columnconfigure(1, weight=1)
-        
+
         f_alert = ttk.Labelframe(grid_frame, text=" ⚠️ Inventory Alerts ", padding=15, bootstyle="danger")
         f_alert.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.lbl_alerts = ttk.Label(f_alert, text="Scanning...", font=("Segoe UI", 11)); self.lbl_alerts.pack(anchor="w")
-        
+
         f_queue = ttk.Labelframe(grid_frame, text=" ⏳ Pending Jobs ", padding=15, bootstyle="warning")
         f_queue.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
         self.lbl_queue_status = ttk.Label(f_queue, text="Scanning...", font=("Segoe UI", 11)); self.lbl_queue_status.pack(anchor="w")
-        
+
         self.f_graph = ttk.Labelframe(grid_frame, text=" 📊 Performance Analytics ", padding=10, bootstyle="success")
         self.f_graph.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
-        
+
         f_sys = ttk.Labelframe(grid_frame, text=" 💾 System Actions ", padding=15, bootstyle="info")
         f_sys.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
-        
+
         ttk.Button(f_sys, text="📦 Backup All Data (.zip)", command=self.backup_all_data, bootstyle="info").pack(fill="x", pady=5)
         ttk.Button(f_sys, text="📂 Set Data Folder", command=self.set_custom_data_path, bootstyle="warning-outline").pack(fill="x", pady=5)
         ttk.Button(f_sys, text="📂 Open Data Folder", command=lambda: os.startfile(DATA_DIR), bootstyle="link").pack(fill="x", pady=5)
@@ -407,7 +407,7 @@ class FilamentManagerApp:
                 low_stock.append(f"• {item['name']} ({item.get('material','')}): {item['weight']:.0f}g")
         if low_stock: self.lbl_alerts.config(text="\n".join(low_stock[:8]), bootstyle="danger")
         else: self.lbl_alerts.config(text="✅ All Stock Healthy", bootstyle="success")
-        
+
         if self.queue: self.lbl_queue_status.config(text=f"• {len(self.queue)} jobs pending.\n• Go to 'Job Queue' tab to process.", bootstyle="warning")
         else: self.lbl_queue_status.config(text="✅ Queue is Empty", bootstyle="success")
 
@@ -430,7 +430,7 @@ class FilamentManagerApp:
                 d_str = h['date'].split(" ")[0] if " " in h['date'] else h['date']
                 d_obj = datetime.strptime(d_str, "%Y-%m-%d")
                 m_key = d_obj.strftime("%b")
-                
+
                 if m_key in data and not h.get('is_donation', False):
                     data[m_key] += h.get('profit', 0)
             except: pass
@@ -445,13 +445,13 @@ class FilamentManagerApp:
         fig, ax = plt.subplots(figsize=(5, 3), dpi=100)
         fig.patch.set_facecolor(bg_col)
         ax.set_facecolor(bg_col)
-        
+
         bars = ax.bar(months, profits, color=bar_col)
         ax.set_title("Net Profit (Last 6 Months)", color=fg_col, fontsize=10)
         ax.tick_params(axis='x', colors=fg_col)
         ax.tick_params(axis='y', colors=fg_col)
         ax.spines['bottom'].set_color(fg_col)
-        ax.spines['left'].set_color(fg_col) 
+        ax.spines['left'].set_color(fg_col)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
 
@@ -468,11 +468,11 @@ class FilamentManagerApp:
         paned = ttk.Panedwindow(self.tab_calc, orient=tk.HORIZONTAL)
         paned.pack(fill="both", expand=True, padx=5, pady=5)
         frame_left = ttk.Frame(paned); paned.add(frame_left, weight=1)
-        
+
         f_job = ttk.Labelframe(frame_left, text="1. Job Details", padding=10); f_job.pack(fill="x", pady=5)
         ttk.Label(f_job, text="Name:").pack(side="left")
         self.entry_job_name = ttk.Entry(f_job); self.entry_job_name.pack(side="left", fill="x", expand=True, padx=5)
-        
+
         f_mat = ttk.Labelframe(frame_left, text="2. Materials", padding=10); f_mat.pack(fill="x", pady=5)
         search_frame = ttk.Frame(f_mat); search_frame.grid(row=0, column=0, columnspan=5, sticky="ew", pady=(0, 5))
         ttk.Label(search_frame, text="🔍 Filter:").pack(side="left")
@@ -487,7 +487,7 @@ class FilamentManagerApp:
         self.list_job = tk.Listbox(list_frame, height=4, font=("Segoe UI", 9)); self.list_job.pack(side="left", fill="x", expand=True)
         sb_list = ttk.Scrollbar(list_frame, orient="vertical", command=self.list_job.yview); sb_list.pack(side="right", fill="y"); self.list_job.config(yscrollcommand=sb_list.set)
         ttk.Button(f_mat, text="Clear List", command=self.clear_job, bootstyle="danger-outline").grid(row=3, column=4, sticky="e")
-        
+
         f_over = ttk.Labelframe(frame_left, text="3. Labor & Overhead", padding=10); f_over.pack(fill="x", pady=5)
         ttk.Label(f_over, text="Print Time (h):").grid(row=0, column=0, sticky="e")
         self.entry_hours = ttk.Entry(f_over, width=6); self.entry_hours.grid(row=0, column=1, padx=5)
@@ -495,30 +495,30 @@ class FilamentManagerApp:
         self.entry_processing = ttk.Entry(f_over, width=6); self.entry_processing.insert(0,"0.00"); self.entry_processing.grid(row=0, column=3, padx=5)
         ttk.Label(f_over, text="Swaps (#):").grid(row=1, column=0, sticky="e", pady=5)
         self.entry_swaps = ttk.Entry(f_over, width=6); self.entry_swaps.grid(row=1, column=1, padx=5); self.entry_swaps.bind("<KeyRelease>", self.update_waste_estimate)
-        
+
         ttk.Label(f_over, text="Waste %:").grid(row=1, column=2, sticky="e", pady=5)
         self.entry_waste = ttk.Entry(f_over, width=6)
         self.entry_waste.insert(0, self.defaults.get("waste", "20"))
         self.entry_waste.grid(row=1, column=3, padx=5)
-        
+
         f_price = ttk.Labelframe(frame_left, text="4. Pricing Strategy", padding=10); f_price.pack(fill="x", pady=5)
         ttk.Label(f_price, text="Markup (x):").grid(row=0, column=0, sticky="e")
         self.entry_markup = ttk.Entry(f_price, width=6)
         self.entry_markup.insert(0, self.defaults.get("markup", "2.5"))
         self.entry_markup.grid(row=0, column=1, padx=5)
-        
+
         ttk.Label(f_price, text="Discount (%):").grid(row=0, column=2, sticky="e")
         self.entry_discount = ttk.Entry(f_price, width=6)
         self.entry_discount.insert(0, self.defaults.get("discount", "0"))
         self.entry_discount.grid(row=0, column=3, padx=5)
-        
+
         self.var_round = tk.BooleanVar(value=False); self.var_donate = tk.BooleanVar(value=False); self.var_detailed_receipt = tk.BooleanVar(value=False)
         ttk.Checkbutton(f_price, text="Round to nearest $", variable=self.var_round, command=self.calculate_quote, bootstyle="round-toggle").grid(row=1, column=0, columnspan=2, sticky="w", pady=5)
         ttk.Checkbutton(f_price, text="Donation (Tax Write-off)", variable=self.var_donate, command=self.calculate_quote, bootstyle="round-toggle").grid(row=1, column=2, columnspan=2, sticky="w", pady=5)
         ttk.Checkbutton(f_price, text="Detailed Receipt (Line Items)", variable=self.var_detailed_receipt, bootstyle="round-toggle").grid(row=2, column=0, columnspan=3, sticky="w", pady=5)
-        
+
         ttk.Button(frame_left, text="CALCULATE QUOTE", command=self.calculate_quote, bootstyle="primary").pack(fill="x", pady=10)
-        
+
         frame_right = ttk.Frame(paned, padding=10); paned.add(frame_right, weight=1)
         self.lbl_breakdown = ttk.Label(frame_right, text="Enter details...", font=("Consolas", 11), justify="left", padding=10, relief="sunken", bootstyle="secondary-inverse"); self.lbl_breakdown.pack(fill="both", expand=True)
         self.lbl_profit_warn = ttk.Label(frame_right, text="", font=("Arial", 12, "bold")); self.lbl_profit_warn.pack(pady=5)
@@ -551,7 +551,7 @@ class FilamentManagerApp:
         else:
             filtered_list = [item for item in self.full_filament_list if typed in item.lower()]
             self.combo_filaments['values'] = filtered_list
-            if filtered_list: self.combo_filaments.current(0) 
+            if filtered_list: self.combo_filaments.current(0)
 
     def add_to_job(self):
         selected_text = self.combo_filaments.get()
@@ -564,7 +564,7 @@ class FilamentManagerApp:
                 entry_str = f"{id_prefix}{f['name']} ({mat} - {col}) - {int(f['weight'])}g"
                 if entry_str == selected_text: found_spool = f; break
             if not found_spool: messagebox.showerror("Error", "Selected spool not found."); return
-            
+
             # Note: We do NOT hard stop here. The 'Last Line of Defense' is in deduct_inventory.
             if grams > found_spool['weight']:
                 messagebox.showwarning("Low Stock", f"Warning: This job requires {grams}g, but the spool only has {int(found_spool['weight'])}g remaining.")
@@ -588,7 +588,7 @@ class FilamentManagerApp:
             hours = float(self.entry_hours.get() or 0); waste = float(self.entry_waste.get()) / 100.0
             process_fee = float(self.entry_processing.get()); markup = float(self.entry_markup.get()); discount_pct = float(self.entry_discount.get()) / 100.0
             self.save_sticky_settings()
-            
+
             raw_mat_cost = sum(x['cost'] for x in self.current_job_filaments)
             mat_total = raw_mat_cost * (1 + waste); machine_cost = hours * 0.75; base_cost = mat_total + machine_cost + process_fee
             subtotal = base_cost * markup; discount_amt = subtotal * discount_pct; final_price = subtotal - discount_amt
@@ -604,7 +604,7 @@ class FilamentManagerApp:
             elif margin >= 30: self.lbl_profit_warn.config(text=f"Good Margin ({margin:.0f}%)", bootstyle="warning")
             else: self.lbl_profit_warn.config(text=f"Low Margin ({margin:.0f}%)", bootstyle="danger")
             for btn in [self.btn_deduct, self.btn_receipt, self.btn_queue, self.btn_fail]: btn.config(state="normal")
-        except ValueError: 
+        except ValueError:
             if self.current_job_filaments: messagebox.showerror("Error", "Check inputs")
 
     def deduct_inventory(self):
@@ -618,7 +618,7 @@ class FilamentManagerApp:
             needed_w = item['grams']
             if (current_w - needed_w) < 0:
                 warnings.append(f"• {item['spool']['name']}: Has {current_w:.0f}g, Needs {needed_w:.0f}g")
-        
+
         # 3. If negatives found, force a second confirmation
         if warnings:
             msg = "⚠️ WARNING: The following spools will go into NEGATIVE quantity:\n\n" + "\n".join(warnings) + "\n\nProceed anyway?"
@@ -630,18 +630,18 @@ class FilamentManagerApp:
         for item in self.current_job_filaments:
             item['spool']['weight'] -= item['grams']
             items_snapshot.append({"name": item['spool']['name'], "material": item['spool'].get('material', 'Unknown'), "color": item['spool'].get('color', 'Unknown'), "grams": item['grams']})
-        
+
         self.save_json(self.inventory, DB_FILE)
-        
+
         rec = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "job": self.entry_job_name.get() or "Unknown", "cost": self.calc_vals['cost'], "sold_for": self.calc_vals['price'], "is_donation": self.var_donate.get(), "profit": self.calc_vals['profit'], "items": items_snapshot}
         self.history.append(rec)
         self.save_json(self.history, HISTORY_FILE)
-        
+
         self.entry_job_name.delete(0, tk.END)
         self.clear_job()
         self.update_filament_dropdown()
         self.refresh_dashboard()
-        self.refresh_inventory_list() 
+        self.refresh_inventory_list()
         messagebox.showinfo("Success", "Inventory Updated!")
 
     def log_failure(self):
@@ -692,11 +692,11 @@ class FilamentManagerApp:
         sel = self.queue_tree.selection()
         if not sel: return
         idx = int(sel[0]); job = self.queue[idx]
-        
+
         if not messagebox.askyesno("Confirm", f"Mark '{job['job']}' as complete?\nThis will deduct materials now."): return
-        
+
         # --- LOGIC START ---
-        
+
         # 1. Match Spools & Check for Negatives
         spool_map = [] # Stores tuple (spool_reference, grams_needed)
         missing_spools = False
@@ -707,11 +707,11 @@ class FilamentManagerApp:
             for spool in self.inventory:
                 # Fuzzy match logic
                 if (spool['name'] == needed['name'] and spool['color'] == needed['color'] and spool.get('material') == needed.get('material')):
-                    
+
                     # Check if this will go negative
                     if (spool['weight'] - needed['grams']) < 0:
                         negative_warnings.append(f"• {spool['name']}: Has {spool['weight']:.0f}g, Needs {needed['grams']:.0f}g")
-                    
+
                     spool_map.append((spool, needed['grams']))
                     found = True
                     break
@@ -723,7 +723,7 @@ class FilamentManagerApp:
              if not messagebox.askyesno("Missing Spool", "Some spools were not found in inventory (Orphaned).\n\nRecord the sale anyway without deducting materials?"):
                  return
              # If yes, we skip the deduction loop below but still save history
-             spool_map = [] 
+             spool_map = []
 
         # 3. Handle "Negative" Spools (Exists, but low weight)
         if negative_warnings:
@@ -737,14 +737,14 @@ class FilamentManagerApp:
 
         # 5. Save & Cleanup
         self.save_json(self.inventory, DB_FILE)
-        
+
         rec = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "job": job['job'], "cost": job['cost'], "sold_for": job['sold_for'], "is_donation": job.get('is_donation', False), "profit": job.get('profit', 0), "items": job['items']}
         self.history.append(rec)
         self.save_json(self.history, HISTORY_FILE)
-        
+
         del self.queue[idx]
         self.save_json(self.queue, QUEUE_FILE)
-        
+
         self.refresh_queue_list()
         self.refresh_history_list()
         self.refresh_inventory_list()
@@ -811,10 +811,10 @@ class FilamentManagerApp:
     def build_inventory_tab(self):
         frame = ttk.Frame(self.tab_inventory, padding=10); frame.pack(fill="both", expand=True)
         add_frame = ttk.Labelframe(frame, text=" Add New Spool ", padding=10); add_frame.pack(fill="x", pady=5)
-        
+
         ttk.Label(add_frame, text="Brand/Name:").grid(row=0, column=0, sticky="e")
         self.inv_name = ttk.Entry(add_frame, width=15); self.inv_name.grid(row=0, column=1, padx=5)
-        
+
         ttk.Label(add_frame, text="ID / Label:").grid(row=0, column=2, sticky="e")
         id_frame = ttk.Frame(add_frame); id_frame.grid(row=0, column=3, padx=5)
         self.inv_id = ttk.Entry(id_frame, width=5); self.inv_id.pack(side="left")
@@ -822,20 +822,20 @@ class FilamentManagerApp:
 
         ttk.Label(add_frame, text="Material:").grid(row=0, column=4, sticky="e")
         self.inv_mat_var = tk.StringVar()
-        self.cb_inv_mat = ttk.Combobox(add_frame, textvariable=self.inv_mat_var, width=10, 
-            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
-                    "PETG", "PETG Trans", "PCTG", "TPU", "TPU 95A", "ABS", "ASA", 
+        self.cb_inv_mat = ttk.Combobox(add_frame, textvariable=self.inv_mat_var, width=10,
+            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri",
+                    "PETG", "PETG Trans", "PCTG", "TPU", "TPU 95A", "ABS", "ASA",
                     "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", "Other"))
         self.cb_inv_mat.grid(row=0, column=5, padx=5)
-        
+
         ttk.Label(add_frame, text="Color:").grid(row=0, column=6, sticky="e")
         self.inv_color = ttk.Entry(add_frame, width=10); self.inv_color.grid(row=0, column=7, padx=5)
-        
+
         ttk.Label(add_frame, text="Cost ($):").grid(row=1, column=0, sticky="e")
         self.inv_cost = ttk.Entry(add_frame, width=6); self.inv_cost.insert(0,"20.00"); self.inv_cost.grid(row=1, column=1, padx=5)
         ttk.Label(add_frame, text="Weight (g):").grid(row=1, column=2, sticky="e", pady=5)
         self.inv_weight = ttk.Entry(add_frame, width=8); self.inv_weight.insert(0,"1000"); self.inv_weight.grid(row=1, column=3, padx=5)
-        
+
         self.tare_var = tk.IntVar(value=0)
         ttk.Radiobutton(add_frame, text="Net", variable=self.tare_var, value=0).grid(row=1, column=4, padx=5)
         ttk.Radiobutton(add_frame, text="Plastic", variable=self.tare_var, value=220).grid(row=1, column=5, padx=5)
@@ -860,20 +860,20 @@ class FilamentManagerApp:
 
         # UPDATE: Separate columns for Image (#0) and Benchy
         self.tree = ttk.Treeview(frame, columns=("ID", "Name", "Material", "Color", "Weight", "Cost", "Benchy"), show="tree headings", height=12, bootstyle="info")
-        
+
         self.tree.column("#0", width=60, anchor="center")
         self.tree.heading("#0", text="Color") # Image Column is now just Color
-        
+
         self.tree.column("ID", width=50, anchor="center")
         self.tree.column("Benchy", width=70, anchor="center") # New Text Column
         self.tree.column("Weight", width=80, anchor="e")
         self.tree.column("Cost", width=80, anchor="e")
-        
+
         cols = ("ID", "Name", "Material", "Color", "Weight", "Cost", "Benchy")
         for c in cols: self.tree.heading(c, text=c, command=lambda _col=c: self.sort_column(_col, False))
-        
+
         self.lbl_inv_total = ttk.Label(frame, text="Total: 0 Spools", font=("Segoe UI", 10, "bold"), bootstyle="secondary-inverse", anchor="w", padding=5)
-        self.lbl_inv_total.pack(side="bottom", fill="x", pady=5) 
+        self.lbl_inv_total.pack(side="bottom", fill="x", pady=5)
         self.tree.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview); sb.pack(side="right", fill="y"); self.tree.configure(yscrollcommand=sb.set)
         self.tree.tag_configure('low', background='#FFF2CC'); self.tree.tag_configure('crit', background='#FFCCCC')
@@ -898,7 +898,7 @@ class FilamentManagerApp:
         for i in self.tree.get_children(): self.tree.delete(i)
         filter_txt = self.inv_filter_var.get().lower().strip()
         total_grams = 0; count = 0; total_value = 0.0
-        
+
         # Sort Data
         try:
             if self.sort_col in ("ID", "Weight", "Cost"):
@@ -910,35 +910,35 @@ class FilamentManagerApp:
                 sorted_inv = sorted(self.inventory, key=lambda x: str(x.get(self.sort_col.lower(), "")).lower(), reverse=self.sort_reverse)
         except: sorted_inv = self.inventory
 
-        for item in sorted_inv: 
+        for item in sorted_inv:
             mat = item.get('material', 'Unknown'); fid = item.get('id', '')
             has_benchy = item.get('has_benchy', False)
             color_name = item.get('color', 'grey')
-            
+
             # Generate Color Swatch ONLY
             color_icon = self.generate_color_swatch(color_name)
-            self.icon_cache[item['id']] = color_icon 
+            self.icon_cache[item['id']] = color_icon
 
             # Benchy Text
             benchy_txt = "✅ Yes" if has_benchy else "❌ No"
 
             search_str = f"{item['name']} {mat} {fid}".lower()
-            if "benchy" in filter_txt: 
+            if "benchy" in filter_txt:
                 if "yes" in filter_txt and not has_benchy: continue
                 if "no" in filter_txt and has_benchy: continue
             elif filter_txt and filter_txt not in search_str: continue
-                
+
             w = item['weight']; total_grams += w; count += 1
             fraction_left = w / 1000.0; total_value += (item['cost'] * fraction_left)
-            
+
             tags = []
             if w < 50: tags.append('crit')
             elif w < 200: tags.append('low')
             if count % 2 != 0: tags.append('oddrow')
-            
+
             real_idx = self.inventory.index(item)
             self.tree.insert("", "end", iid=real_idx, text="", image=color_icon, values=(fid, item['name'], mat, item['color'], f"{w:.1f}", item['cost'], benchy_txt), tags=tuple(tags))
-            
+
         self.lbl_inv_total.config(text=f"  Total: {count} Spools  |  {total_grams/1000:.1f} kg Filament  |  Est. Value: ${total_value:.2f}")
         self.update_row_colors()
 
@@ -971,7 +971,7 @@ class FilamentManagerApp:
             self.var_benchy.set(item.get('has_benchy', False)) # Load Benchy status
             self.editing_index = idx; self.btn_inv_action.config(text="Update Spool")
         except: messagebox.showerror("Error", "Could not load item.")
-    
+
     def open_bulk_edit(self, selection):
         dialog = tk.Toplevel(self.root); dialog.title(f"Bulk Edit ({len(selection)} items)"); dialog.geometry("400x400")
         ttk.Label(dialog, text="Check box to apply change:", font=("Segoe UI", 9, "bold")).pack(pady=10)
@@ -979,16 +979,16 @@ class FilamentManagerApp:
         chk_name = tk.BooleanVar(); val_name = tk.StringVar(); chk_mat = tk.BooleanVar(); val_mat = tk.StringVar()
         chk_col = tk.BooleanVar(); val_col = tk.StringVar(); chk_cost = tk.BooleanVar(); val_cost = tk.StringVar()
         chk_benchy = tk.BooleanVar(); val_benchy = tk.BooleanVar() # New Bulk Benchy
-        
+
         ttk.Checkbutton(f, text="Name:", variable=chk_name).grid(row=0, column=0, sticky="w")
         ttk.Entry(f, textvariable=val_name).grid(row=0, column=1, sticky="ew", padx=5)
         ttk.Checkbutton(f, text="Material:", variable=chk_mat).grid(row=1, column=0, sticky="w")
         ttk.Combobox(f, textvariable=val_mat, width=10,
-            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
-                    "PETG", "PETG Trans", "PCTG", 
-                    "TPU", "TPU 95A", 
-                    "ABS", "ASA", 
-                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", 
+            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri",
+                    "PETG", "PETG Trans", "PCTG",
+                    "TPU", "TPU 95A",
+                    "ABS", "ASA",
+                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow",
                     "Other")).grid(row=1, column=1, sticky="ew", padx=5)
         ttk.Checkbutton(f, text="Color:", variable=chk_col).grid(row=2, column=0, sticky="w")
         ttk.Entry(f, textvariable=val_col).grid(row=2, column=1, sticky="ew", padx=5)
@@ -1014,17 +1014,17 @@ class FilamentManagerApp:
 
     def bulk_set_material(self):
         sel = self.tree.selection()
-        if not sel: 
+        if not sel:
             messagebox.showinfo("Info", "Select items first."); return
         dialog = tk.Toplevel(self.root); dialog.title("Quick Material Set"); dialog.geometry("300x150")
         ttk.Label(dialog, text=f"Set Material for {len(sel)} items:").pack(pady=10)
         m_var = tk.StringVar()
-        cb = ttk.Combobox(dialog, textvariable=m_var, state="readonly", 
-            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri", 
-                    "PETG", "PETG Trans", "PCTG", 
-                    "TPU", "TPU 95A", 
-                    "ABS", "ASA", 
-                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow", 
+        cb = ttk.Combobox(dialog, textvariable=m_var, state="readonly",
+            values=("PLA", "PLA+", "PLA Matte", "PLA Silk", "PLA Dual", "PLA Tri",
+                    "PETG", "PETG Trans", "PCTG",
+                    "TPU", "TPU 95A",
+                    "ABS", "ASA",
+                    "Nylon", "PC", "Carbon Fiber", "Wood Fill", "Glow",
                     "Other"))
         cb.pack(pady=5); cb.current(0)
         def commit():
@@ -1044,7 +1044,7 @@ class FilamentManagerApp:
     def delete_spool(self):
         sel = self.tree.selection()
         if not sel: return
-        if self.inv_filter_var.get(): 
+        if self.inv_filter_var.get():
             self.inv_filter_var.set("")
             return
         if messagebox.askyesno("Confirm", "Delete?"):
@@ -1057,7 +1057,7 @@ class FilamentManagerApp:
         if sel:
             idx = int(sel[0]); name = self.inventory[idx]['name']; mat = self.inventory[idx].get('material', '')
             webbrowser.open(f"https://www.google.com/search?q={name} {mat} filament price")
-            
+
     # History/Maint Tabs
     def build_history_tab(self):
         frame = ttk.Frame(self.tab_history, padding=10); frame.pack(fill="both", expand=True)
@@ -1068,11 +1068,11 @@ class FilamentManagerApp:
         ttk.Label(f_bar, text="Type:").pack(side="left"); ttk.Combobox(f_bar, textvariable=self.hist_type, values=("All", "Sales", "Donations"), width=10, state="readonly").pack(side="left", padx=5)
         ttk.Label(f_bar, text="Search:").pack(side="left", padx=5); self.hist_search_var = tk.StringVar(); self.hist_search_var.trace("w", lambda n, i, m: self.refresh_history_list()); ttk.Entry(f_bar, textvariable=self.hist_search_var, width=15).pack(side="left", padx=5)
         ttk.Button(f_bar, text="Apply", command=self.refresh_history_list, bootstyle="primary").pack(side="left", padx=10)
-        
+
         # New "Manual Add" button frame in filter bar for easy access
         ttk.Button(f_bar, text="➕ Log Past Job", command=self.open_manual_history_dialog, bootstyle="success").pack(side="right", padx=10)
 
-        cols = ("Date", "Job", "Cost", "Sold For", "Profit", "Type"); self.hist_tree = ttk.Treeview(frame, columns=cols, show="headings", bootstyle="info"); 
+        cols = ("Date", "Job", "Cost", "Sold For", "Profit", "Type"); self.hist_tree = ttk.Treeview(frame, columns=cols, show="headings", bootstyle="info");
         for c in cols: self.hist_tree.heading(c, text=c)
         self.hist_tree.pack(side="top", fill="both", expand=True)
         db_frame = ttk.Frame(frame, relief="raised", borderwidth=1); db_frame.pack(side="bottom", fill="x", pady=10)
@@ -1089,20 +1089,20 @@ class FilamentManagerApp:
         dialog = tk.Toplevel(self.root)
         dialog.title("Manually Log Past Job")
         dialog.geometry("450x650") # Taller window
-        
+
         # 1. Job Details
         f_details = ttk.Labelframe(dialog, text="1. Job Details", padding=10)
         f_details.pack(fill="x", padx=10, pady=5)
-        
+
         ttk.Label(f_details, text="Date (YYYY-MM-DD):").grid(row=0, column=0, sticky="e")
         e_date = ttk.Entry(f_details)
         e_date.grid(row=0, column=1, sticky="ew", padx=5)
         e_date.insert(0, datetime.now().strftime("%Y-%m-%d"))
-        
+
         ttk.Label(f_details, text="Job Name:").grid(row=1, column=0, sticky="e")
         e_name = ttk.Entry(f_details)
         e_name.grid(row=1, column=1, sticky="ew", padx=5)
-        
+
         ttk.Label(f_details, text="Sold Price ($):").grid(row=2, column=0, sticky="e")
         e_price = ttk.Entry(f_details)
         e_price.grid(row=2, column=1, sticky="ew", padx=5)
@@ -1111,10 +1111,10 @@ class FilamentManagerApp:
         e_cost = ttk.Entry(f_details)
         e_cost.grid(row=3, column=1, sticky="ew", padx=5)
         e_cost.insert(0, "0.00") # Manual override field
-        
+
         var_donate = tk.BooleanVar(value=False)
         ttk.Checkbutton(f_details, text="Is Donation?", variable=var_donate).grid(row=4, column=1, sticky="w", padx=5)
-        
+
         # 2. Filament Details (Optional / Manual)
         f_fil = ttk.Labelframe(dialog, text="2. Filament Details (Optional)", padding=10)
         f_fil.pack(fill="x", padx=10, pady=5)
@@ -1131,21 +1131,21 @@ class FilamentManagerApp:
         # 3. Inventory Link (Optional)
         f_inv = ttk.Labelframe(dialog, text="3. Link to Inventory (Auto-Deduct)", padding=10, bootstyle="info")
         f_inv.pack(fill="x", padx=10, pady=5)
-        
+
         var_deduct = tk.BooleanVar(value=False)
         chk_deduct = ttk.Checkbutton(f_inv, text="Deduct from Inventory?", variable=var_deduct, bootstyle="round-toggle")
         chk_deduct.pack(anchor="w")
-        
+
         ttk.Label(f_inv, text="Select Spool:").pack(anchor="w", pady=(5,0))
         spool_list = []
         for f in self.inventory:
             fid = f.get('id', ''); id_prefix = f"[{fid}] " if fid else ""
             mat = f.get('material', 'PLA'); col = f.get('color', 'Unknown')
             spool_list.append(f"{id_prefix}{f['name']} ({mat} - {col}) - {int(f['weight'])}g")
-        
+
         cb_spool = ttk.Combobox(f_inv, values=spool_list, state="readonly")
         cb_spool.pack(fill="x", pady=2)
-        
+
         def on_spool_select(event=None):
             if not var_deduct.get(): return
             try:
@@ -1159,13 +1159,13 @@ class FilamentManagerApp:
                     if entry == sel:
                         found_spool = f
                         break
-                
+
                 if found_spool:
                     # Auto-fill text fields
                     mat = found_spool.get('material', 'PLA')
                     col = found_spool.get('color', 'Unknown')
                     e_material.delete(0, tk.END); e_material.insert(0, f"{mat} {col}")
-                    
+
                     # Calc cost if grams present
                     g = float(e_grams.get())
                     if g > 0:
@@ -1181,25 +1181,25 @@ class FilamentManagerApp:
             try:
                 # Validation
                 d_str = e_date.get()
-                datetime.strptime(d_str, "%Y-%m-%d") 
-                
+                datetime.strptime(d_str, "%Y-%m-%d")
+
                 name = e_name.get()
                 if not name:
                     messagebox.showerror("Error", "Job Name is required")
                     return
-                
+
                 sold = float(e_price.get())
                 cost = float(e_cost.get())
-                
+
                 items_snapshot = []
-                
+
                 # Logic Branch: Deduct vs Manual
                 if var_deduct.get():
                     sel = cb_spool.get()
                     if not sel:
                         messagebox.showerror("Error", "Check 'Deduct' is on, but no spool selected.")
                         return
-                    
+
                     # Find and Deduct
                     grams = float(e_grams.get())
                     found_spool = None
@@ -1210,7 +1210,7 @@ class FilamentManagerApp:
                         if entry == sel:
                             found_spool = f
                             break
-                    
+
                     if found_spool:
                         found_spool['weight'] -= grams
                         items_snapshot.append({
@@ -1234,7 +1234,7 @@ class FilamentManagerApp:
 
                 # Save History
                 rec = {
-                    "date": f"{d_str} 12:00", 
+                    "date": f"{d_str} 12:00",
                     "job": name,
                     "cost": cost,
                     "sold_for": sold,
@@ -1242,18 +1242,18 @@ class FilamentManagerApp:
                     "profit": sold - cost,
                     "items": items_snapshot
                 }
-                
+
                 self.history.append(rec)
                 self.history.sort(key=lambda x: x['date']) # Keep timeline sorted
                 self.save_json(self.history, HISTORY_FILE)
-                
+
                 self.refresh_history_list()
                 self.refresh_dashboard()
                 self.refresh_inventory_list()
-                
+
                 messagebox.showinfo("Success", "Job logged.")
                 dialog.destroy()
-                
+
             except ValueError:
                 messagebox.showerror("Error", "Check numbers (Price, Cost, Grams).")
             except Exception as e:
@@ -1268,13 +1268,13 @@ class FilamentManagerApp:
         for idx, h in enumerate(reversed(self.history)):
             if search_txt and search_txt not in h['job'].lower(): continue
             try: h_date = datetime.strptime(h['date'], "%Y-%m-%d %H:%M"); h_month = str(h_date.month).zfill(2); h_year = str(h_date.year)
-            except: 
+            except:
                 # Fallback for manual entries that might just have YYYY-MM-DD
-                try: 
+                try:
                     h_date = datetime.strptime(h['date'], "%Y-%m-%d")
                     h_month = str(h_date.month).zfill(2); h_year = str(h_date.year)
                 except: continue
-                
+
             if m_filter != "All" and m_filter != h_month: continue
             if y_filter != "All" and y_filter != h_year: continue
             is_don = h.get('is_donation', False)
@@ -1300,7 +1300,7 @@ class FilamentManagerApp:
         ttk.Button(dialog, text="Save", command=save).pack(pady=10)
 
     def duplicate_history_job(self):
-        sel = self.hist_tree.selection(); 
+        sel = self.hist_tree.selection();
         if not sel: return
         values = self.hist_tree.item(sel[0], 'values'); job_name = values[1]; job_date = values[0]; found_job = None
         for record in self.history:
@@ -1314,14 +1314,14 @@ class FilamentManagerApp:
                     for spool in self.inventory:
                         if (spool['name'] == item['name'] and spool['color'] == item['color']): cost_per_g = spool['cost'] / 1000.0; matched_spool = spool; break
                     if matched_spool: self.current_job_filaments.append({"spool": matched_spool, "grams": item['grams'], "cost": cost_per_g * item['grams']})
-                    else: 
+                    else:
                         mock_spool = {"name": item['name'], "material": item.get('material',''), "color": item['color'], "weight": 0, "cost": 20.00}
                         self.current_job_filaments.append({"spool": mock_spool, "grams": item['grams'], "cost": 0.02 * item['grams']})
                     self.list_job.insert(tk.END, f"{item['name']} {item['color']}: {item['grams']}g")
             self.notebook.select(self.tab_calc); messagebox.showinfo("Loaded", "Job duplicated.")
 
     def del_history(self):
-        sel = self.hist_tree.selection() 
+        sel = self.hist_tree.selection()
         if not sel: return
         values = self.hist_tree.item(sel[0], 'values'); job_name = values[1]; job_date = values[0]; real_index = -1
         for i, record in enumerate(self.history):
@@ -1331,14 +1331,14 @@ class FilamentManagerApp:
 
     def build_reference_tab(self):
         main_frame = ttk.Frame(self.tab_ref, padding=10); main_frame.pack(fill="both", expand=True)
-        
+
         # --- NOTEBOOK FOR ALL REFERENCES (Data + Images) ---
         self.gallery_notebook = ttk.Notebook(main_frame)
         self.gallery_notebook.pack(fill="both", expand=True)
-        
+
         # --- TAB 1: FILAMENT DATA TABLE (The Fix) ---
         f_tab = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_tab, text=" 📊 Filament Guide ")
-        
+
         cols = ("Material", "Nozzle Type", "Print Temp", "Bed Temp", "Fan Speed", "Difficulty", "Notes")
         fil_tree = ttk.Treeview(f_tab, columns=cols, show="headings", height=20, bootstyle="info")
         for c in cols: fil_tree.heading(c, text=c)
@@ -1350,7 +1350,7 @@ class FilamentManagerApp:
         fil_tree.column("Difficulty", width=80)
         fil_tree.column("Notes", width=300)
         fil_tree.pack(fill="both", expand=True, padx=10, pady=10)
-        
+
         # The Data from your chart + Nozzle Info
         data = [
             ("PLA", "Brass / Standard", "190-220°C", "45-60°C", "100%", "Low", "Easy to print. Keep door open."),
@@ -1365,56 +1365,56 @@ class FilamentManagerApp:
             ("Nylon (PA)", "Hardened Steel", "250-270°C", "70-90°C", "0%", "Very High", "Must be dry box fed. Warps."),
             ("PC", "Hardened Steel", "260-280°C", "110°C+", "0%", "Very High", "Strongest. High heat resistance.")
         ]
-        
+
         for idx, row in enumerate(data):
             tag = 'odd' if idx % 2 else 'even'
             fil_tree.insert("", "end", values=row, tags=(tag,))
-        
+
         fil_tree.tag_configure('odd', background='#f0f0f0')
 
         # --- TAB 2+: DYNAMIC IMAGES ---
         image_files = []
         if os.path.exists(IMAGE_FILE): image_files.append(IMAGE_FILE)
-        
+
         search_folder = os.path.dirname(IMAGE_FILE)
         extensions = ["png", "jpg", "jpeg"]
         for ext in extensions:
             pattern = os.path.join(search_folder, f"ref_*.{ext}")
             found_extras = glob.glob(pattern)
             image_files.extend(found_extras)
-        
+
         image_files = list(set(image_files)) # Remove duplicates
-        
+
         for img_path in image_files:
             try:
                 tab_frame = ttk.Frame(self.gallery_notebook)
                 fname = os.path.basename(img_path)
                 if "spool_reference" in fname: title = "Estimator"
                 else: title = os.path.splitext(fname)[0].replace("ref_", "")
-                
+
                 self.gallery_notebook.add(tab_frame, text=f" 📷 {title} ")
-                
+
                 pil_img = Image.open(img_path)
                 pil_img.thumbnail((800, 600)) # Larger view for charts
                 tk_img = ImageTk.PhotoImage(pil_img)
                 self.ref_images_cache.append(tk_img)
-                
+
                 ttk.Label(tab_frame, image=tk_img).pack(anchor="center", pady=10)
             except: pass
 
         # --- TAB LAST: FIELD MANUAL ---
         man_tab = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(man_tab, text=" 📖 Manual ")
-        
+
         search_frame = ttk.Frame(man_tab); search_frame.pack(fill="x", pady=5)
         ttk.Label(search_frame, text="🔍 Search Issue:").pack(side="left", padx=5)
         self.entry_search = ttk.Entry(search_frame); self.entry_search.pack(side="left", fill="x", expand=True, padx=5)
         ttk.Button(search_frame, text="Search", command=self.perform_search, bootstyle="primary").pack(side="left")
-        
+
         self.mat_var = tk.StringVar()
         self.combo_vals = list(self.materials_data.keys())
         self.mat_combo = ttk.Combobox(man_tab, textvariable=self.mat_var, values=self.combo_vals, state="readonly")
         self.mat_combo.current(0); self.mat_combo.pack(fill="x", pady=5)
-        
+
         self.txt_info = tk.Text(man_tab, font=("Consolas", 11), wrap="word", bg="#f0f0f0", relief="sunken", padx=15, pady=15)
         self.txt_info.pack(fill="both", expand=True, pady=10)
         self.mat_combo.bind("<<ComboboxSelected>>", self.update_material_view)
@@ -1426,8 +1426,8 @@ class FilamentManagerApp:
         matches = []
         for key, content in self.materials_data.items():
             score = 0
-            if query in key.lower(): score += 10 
-            if query in content.lower(): score += 5 
+            if query in key.lower(): score += 10
+            if query in content.lower(): score += 5
             if score > 0: matches.append((key, score))
         if not matches: messagebox.showinfo("No Results", f"No tips found for '{query}'"); return
         matches.sort(key=lambda x: x[1], reverse=True); best_topic = matches[0][0]; self.mat_combo.set(best_topic); self.update_material_view(None)
@@ -1437,7 +1437,7 @@ class FilamentManagerApp:
         self.txt_info.config(state="normal"); self.txt_info.delete("1.0", tk.END); self.txt_info.insert("1.0", text_data); self.txt_info.config(state="disabled")
 
     def open_current_link(self):
-        key = self.mat_var.get(); url = self.resource_links.get(key); 
+        key = self.mat_var.get(); url = self.resource_links.get(key);
         if url: webbrowser.open(url)
 
     def init_resource_links(self):
