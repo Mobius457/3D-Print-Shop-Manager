@@ -1,4 +1,4 @@
-# 3D Print Shop Manager 🚀 (v14.1)
+# 3D Print Shop Manager 🚀 (v14.3)
 
 **The "All-in-One" ERP tool for 3D printing businesses and hobbyists.**
 
@@ -6,12 +6,15 @@ Stop guessing your prices. Stop failing prints. Stop losing track of your invent
 
 This Python application combines a **Business Manager** (Inventory, Quoting, Receipts) with a **Field Manual** (Maintenance, Digital Reference Guide). It features multi-user **Cloud Sync**, automatic **Data Backups**, and a built-in **Auto-Updater**.
 
----
+![App Screenshot](spool_reference.png) 
+*(Note: Replace 'spool_reference.png' with a screenshot of your dashboard if you have one, otherwise remove this line)*
+
+--
 
 ## ✨ Key Features
 
-### 🛡️ Stability & Safety (New in v14.1)
-* **Auto-Backup System:** Every time the app launches, it silently backs up your inventory and sales history to a local `.zip` archive.
+### 🛡️ Stability & Safety (New in v14.3)
+* **Smart Backups:** Automatically zips your database on launch. Keeps a rolling history of the last 2 days (Today + Yesterday) to ensure data safety without clutter.
 * **Inventory Guardrails:** Prevents accidental "Negative Inventory" by warning you if a job exceeds remaining spool weight.
 * **Resilient Queue:** Allows "Force Completion" of jobs even if the original spool data was deleted, ensuring your revenue stats stay accurate.
 
@@ -74,13 +77,11 @@ This app is designed to work across multiple computers (e.g., Workshop PC and Of
 --
 
 ## 📜 Changelog
-* **v14.1:** Added Auto-Backups, Negative Inventory Warnings, and Queue hardening.
+* **v14.3:** Implemented daily backup rotation (keeps last 2) and fixed Reference Gallery image packing.
+* **v14.1:** Added initial Auto-Backups and Inventory Safety Warnings.
 * **v13.9:** Added Digital Filament Guide and Dynamic Reference Gallery.
 * **v13.6:** Split Inventory columns into Visual Swatches and Text.
-* **v13.5:** Added Matplotlib Analytics.
 
 --
 
-
 *Created by Mobius457 for the 3D Printing Community.*
-
