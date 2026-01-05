@@ -28,7 +28,7 @@ except ImportError:
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v14.3 (Daily Backup Rotation)"
+VERSION = "v14.19 (Wiki Data Integration)"
 
 # 🔧 GITHUB SETTINGS
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mobius457/3D-Print-Shop-Manager/refs/heads/main/print_manager.py"
@@ -37,6 +37,12 @@ GITHUB_REPO_URL = "https://github.com/Mobius457/3D-Print-Shop-Manager/releases"
 # ======================================================
 # PATH & SYSTEM LOGIC
 # ======================================================
+
+def get_base_path():
+    """Returns the folder where the script/exe is located."""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 def get_app_data_folder():
     user_profile = os.environ.get('USERPROFILE') or os.path.expanduser("~")
@@ -184,12 +190,11 @@ class FilamentManagerApp:
             backup_dir = os.path.join(DATA_DIR, "Backups")
             if not os.path.exists(backup_dir): os.makedirs(backup_dir)
             
-            # 1. Create Today's Backup (Overwrite if exists to capture latest state of the day)
+            # 1. Create Today's Backup
             today_str = datetime.now().strftime("%Y-%m-%d")
             zip_name = f"AutoBackup_{today_str}.zip"
             zip_path = os.path.join(backup_dir, zip_name)
             
-            # Check if source files exist before zipping
             has_files = False
             with zipfile.ZipFile(zip_path, 'w') as zipf:
                 if os.path.exists(DB_FILE): zipf.write(DB_FILE, arcname="filament_inventory.json"); has_files=True
@@ -197,21 +202,17 @@ class FilamentManagerApp:
                 if os.path.exists(MAINT_FILE): zipf.write(MAINT_FILE, arcname="maintenance_log.json"); has_files=True
                 if os.path.exists(QUEUE_FILE): zipf.write(QUEUE_FILE, arcname="job_queue.json"); has_files=True
             
-            # If no files were found, remove empty zip
             if not has_files:
                 if os.path.exists(zip_path): os.remove(zip_path)
                 return
 
-            # 2. Cleanup: Keep only the 2 most recent files (Today + Yesterday)
             all_backups = sorted(glob.glob(os.path.join(backup_dir, "AutoBackup_*.zip")))
-            
             while len(all_backups) > 2:
-                oldest = all_backups.pop(0) # Remove from list and delete file
+                oldest = all_backups.pop(0) 
                 try: os.remove(oldest)
                 except: pass
-
         except Exception:
-            pass # Fail silently on startup backups
+            pass 
 
     def load_json(self, filepath):
         if not os.path.exists(filepath): return []
@@ -309,6 +310,7 @@ class FilamentManagerApp:
                 tree.tag_configure('oddrow', background=odd_bg, foreground=odd_fg)
                 tree.tag_configure('low', background=low_bg, foreground=warn_fg)
                 tree.tag_configure('crit', background=crit_bg, foreground=warn_fg)
+                tree.tag_configure('custom', foreground='#2980b9' if self.current_theme != "darkly" else '#3498db', font=("Segoe UI", 9, "bold"))
 
     def set_custom_data_path(self):
         new_dir = filedialog.askdirectory(title="Select Folder to Store Data (OneDrive/Dropbox/etc)")
@@ -524,6 +526,27 @@ class FilamentManagerApp:
         
         ttk.Button(frame_left, text="CALCULATE QUOTE", command=self.calculate_quote, bootstyle="primary").pack(fill="x", pady=10)
         
+        # --- NEW IMAGE SECTION IN CALCULATOR ---
+        if os.path.exists(IMAGE_FILE):
+            try:
+                pil_img = Image.open(IMAGE_FILE)
+                # FIX: Constrain height to 200px to ensure it fits in the sidebar
+                pil_img.thumbnail((350, 200), Image.Resampling.LANCZOS)
+                
+                self.tk_calc_img = ImageTk.PhotoImage(pil_img) # Keep ref
+                img_label = ttk.Label(frame_left, image=self.tk_calc_img, cursor="hand2")
+                img_label.pack(pady=5, anchor="n")
+                
+                # Bind click to open full size
+                def open_full_image(e):
+                    try: os.startfile(IMAGE_FILE)
+                    except: webbrowser.open(IMAGE_FILE)
+                img_label.bind("<Button-1>", open_full_image)
+                
+                ttk.Label(frame_left, text="(Click image to enlarge)", font=("Arial", 7), foreground="gray").pack()
+                
+            except: pass
+
         frame_right = ttk.Frame(paned, padding=10); paned.add(frame_right, weight=1)
         self.lbl_breakdown = ttk.Label(frame_right, text="Enter details...", font=("Consolas", 11), justify="left", padding=10, relief="sunken", bootstyle="secondary-inverse"); self.lbl_breakdown.pack(fill="both", expand=True)
         self.lbl_profit_warn = ttk.Label(frame_right, text="", font=("Arial", 12, "bold")); self.lbl_profit_warn.pack(pady=5)
@@ -1341,75 +1364,156 @@ class FilamentManagerApp:
         self.gallery_notebook = ttk.Notebook(main_frame)
         self.gallery_notebook.pack(fill="both", expand=True)
         
-        # --- TAB 1: FILAMENT DATA TABLE (The Fix) ---
-        f_tab = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_tab, text=" 📊 Filament Guide ")
-        
-        cols = ("Material", "Nozzle Type", "Print Temp", "Bed Temp", "Fan Speed", "Difficulty", "Notes")
-        fil_tree = ttk.Treeview(f_tab, columns=cols, show="headings", height=20, bootstyle="info")
-        for c in cols: fil_tree.heading(c, text=c)
-        fil_tree.column("Material", width=120)
-        fil_tree.column("Nozzle Type", width=150) # The column you asked for
-        fil_tree.column("Print Temp", width=100)
-        fil_tree.column("Bed Temp", width=100)
-        fil_tree.column("Fan Speed", width=80)
-        fil_tree.column("Difficulty", width=80)
-        fil_tree.column("Notes", width=300)
-        fil_tree.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # The Data from your chart + Nozzle Info
-        data = [
-            ("PLA", "Brass / Standard", "190-220°C", "45-60°C", "100%", "Low", "Easy to print. Keep door open."),
-            ("PLA Silk", "Brass / Standard", "210-230°C", "50-60°C", "100%", "Low-Med", "Print slow/hot for shine. Expands."),
-            ("PLA Carbon Fiber", "Hardened Steel", "210-230°C", "50-60°C", "100%", "Med", "Abrasive! Wears out brass nozzles."),
-            ("PLA Glow", "Hardened Steel", "210-230°C", "50-60°C", "100%", "Med", "Highly abrasive."),
-            ("PLA Wood", "Hardened (0.6mm)", "190-210°C", "50-60°C", "100%", "Med", "Clogs easily. Use larger nozzle."),
-            ("PETG", "Brass / Standard", "230-250°C", "70-85°C", "30-50%", "Med", "Stringy. Sticks well to PEI."),
-            ("TPU (Flex)", "Brass / Standard", "220-240°C", "40-60°C", "50-100%", "High", "Print SLOW (20mm/s). Dry first."),
-            ("ABS", "Brass / Standard", "240-260°C", "90-110°C", "0%", "High", "Needs enclosure. Toxic fumes."),
-            ("ASA", "Brass / Standard", "240-260°C", "90-110°C", "0-20%", "High", "UV Resistant. Outdoor use."),
-            ("Nylon (PA)", "Hardened Steel", "250-270°C", "70-90°C", "0%", "Very High", "Must be dry box fed. Warps."),
-            ("PC", "Hardened Steel", "260-280°C", "110°C+", "0%", "Very High", "Strongest. High heat resistance.")
-        ]
-        
-        for idx, row in enumerate(data):
-            tag = 'odd' if idx % 2 else 'even'
-            fil_tree.insert("", "end", values=row, tags=(tag,))
-        
-        fil_tree.tag_configure('odd', background='#f0f0f0')
+        # --- NEW: OPEN FOLDER BUTTON ---
+        ttk.Button(main_frame, text="📂 Manage Gallery Images (Add/Remove Tabs)", 
+                   command=lambda: os.startfile(get_base_path()), 
+                   bootstyle="secondary-outline").pack(anchor="ne", pady=(0, 5))
 
-        # --- TAB 2+: DYNAMIC IMAGES ---
-        image_files = []
-        if os.path.exists(IMAGE_FILE): image_files.append(IMAGE_FILE)
+        # --- TAB 1: FILAMENT COMPARISON ---
+        self.build_wiki_tabs() # Adds the 4 new static tabs
         
-        search_folder = os.path.dirname(IMAGE_FILE)
+        # Then add dynamic images
+        self.build_dynamic_gallery_tabs()
+        
+        # Last is the Field Manual
+        self.build_manual_tab()
+
+    def build_wiki_tabs(self):
+        # 1. COMPARISON (Scanned JSONs)
+        f_comp = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_comp, text=" 📂 My Profiles ")
+        
+        ttk.Label(f_comp, text="ℹ️ Tip: Double-click a row to open the source profile file.", font=("Segoe UI", 9, "italic"), foreground="gray").pack(pady=(5,0))
+        
+        cols = ("Material", "Nozzle Type", "Print Temp", "Bed Temp", "Fan Speed", "Difficulty")
+        self.fil_tree = ttk.Treeview(f_comp, columns=cols, show="headings", height=20, bootstyle="info")
+        for c in cols: self.fil_tree.heading(c, text=c)
+        self.fil_tree.column("Material", width=120)
+        self.fil_tree.column("Nozzle Type", width=150) 
+        self.fil_tree.pack(fill="both", expand=True, padx=10, pady=5)
+        self.fil_tree.bind("<Double-1>", self.on_guide_double_click)
+        
+        # Scan Logic (From v14.17)
+        data = self.scan_for_custom_profiles()
+        if not data: self.fil_tree.insert("", "end", values=("No Profiles Found", "-", "-", "-", "-", "-"), tags=('even',))
+        else:
+            for idx, row in enumerate(data):
+                self.fil_tree.insert("", "end", values=row, tags=('odd' if idx%2 else 'even',))
+        self.fil_tree.tag_configure('odd', background='#f0f0f0')
+
+        # 2. WIKI: SPECS (Physical Properties)
+        f_prop = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_prop, text=" 🧪 Wiki: Specs ")
+        cols_p = ("Material", "Impact Strength (kJ/m²)", "Tensile Strength (MPa)", "Stiffness (MPa)", "Heat Deflection (°C)")
+        tree_p = ttk.Treeview(f_prop, columns=cols_p, show="headings", height=20, bootstyle="success")
+        for c in cols_p: tree_p.heading(c, text=c); tree_p.column(c, width=120)
+        tree_p.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        props_data = [
+            ("PLA Basic", "26.6", "76", "2750", "57"),
+            ("PETG Basic", "52.7", "81", "1790", "69"),
+            ("ABS", "41.0", "68", "1880", "87"),
+            ("ASA", "41.0", "74", "1920", "100"),
+            ("PC", "29.5", "112", "2080", "117"),
+            ("TPU 95A", "125.2", "N/A", "N/A", "N/A"),
+            ("PLA-CF", "23.2", "96", "3700", "55"),
+            ("PETG-CF", "41.2", "83", "2890", "74"),
+            ("PAHT-CF", "57.5", "140", "4120", "194"),
+            ("PET-CF", "36.0", "149", "5080", "205")
+        ]
+        for row in props_data: tree_p.insert("", "end", values=row)
+
+        # 3. WIKI: SETTINGS (Official Bambu Ranges)
+        f_set = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_set, text=" 🎛️ Wiki: Settings ")
+        cols_s = ("Material", "Print Speed", "Nozzle Temp", "Bed Temp", "Part Fan")
+        tree_s = ttk.Treeview(f_set, columns=cols_s, show="headings", height=20, bootstyle="info")
+        for c in cols_s: tree_s.heading(c, text=c); tree_s.column(c, width=120)
+        tree_s.pack(fill="both", expand=True, padx=10, pady=5)
+
+        settings_data = [
+            ("PLA", "<300 mm/s", "190-230°C", "35-45°C", "50-100%"),
+            ("PETG", "<200 mm/s", "240-270°C", "65-75°C", "0-60%"),
+            ("ABS", "<300 mm/s", "240-280°C", "90-100°C", "0-80%"),
+            ("ASA", "<300 mm/s", "240-280°C", "90-100°C", "0-80%"),
+            ("PC", "<300 mm/s", "260-290°C", "100-110°C", "0-60%"),
+            ("TPU 95A", "<80 mm/s", "220-240°C", "30-45°C", "50-100%"),
+            ("PLA-CF", "<250 mm/s", "210-240°C", "35-55°C", "50-100%"),
+            ("PETG-CF", "<200 mm/s", "240-270°C", "65-75°C", "0-40%"),
+            ("PAHT-CF", "<100 mm/s", "260-300°C", "100-110°C", "0-40%")
+        ]
+        for row in settings_data: tree_s.insert("", "end", values=row)
+
+        # 4. WIKI: PREP (Drying/AMS)
+        f_prep = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_prep, text=" 🔥 Wiki: Prep ")
+        cols_prep = ("Material", "Drying Required?", "Temp / Time", "AMS Compatible?", "Enclosure?", "Plate Type")
+        tree_prep = ttk.Treeview(f_prep, columns=cols_prep, show="headings", height=20, bootstyle="warning")
+        for c in cols_prep: tree_prep.heading(c, text=c); tree_prep.column(c, width=120)
+        tree_prep.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        prep_data = [
+            ("PLA", "Optional", "55°C (8h)", "✅ Yes", "❌ Open Door", "Cool / Texture"),
+            ("PETG", "Optional (Rec)", "65°C (8h)", "✅ Yes", "❌ Open Door", "Engineering / Texture"),
+            ("ABS", "Required", "80°C (8h)", "✅ Yes", "✅ Required", "Engineering / High Temp"),
+            ("ASA", "Required", "80°C (8h)", "✅ Yes", "✅ Required", "Engineering / High Temp"),
+            ("PC", "Required", "80°C (8h)", "✅ Yes", "✅ Required", "Engineering"),
+            ("TPU", "Required", "70°C (8h)", "❌ NO", "❌ Open Door", "Cool / Texture"),
+            ("PAHT-CF", "Required", "80°C (12h)", "✅ Yes", "✅ Required", "Engineering"),
+            ("PVA (Support)", "Required", "80°C (12h)", "✅ Yes", "✅ Closed", "Cool / Texture")
+        ]
+        for row in prep_data: tree_prep.insert("", "end", values=row)
+
+        # 5. WIKI: POST (Annealing)
+        f_post = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(f_post, text=" 🔨 Wiki: Post ")
+        cols_post = ("Material", "Annealing Temp", "Time", "Benefit")
+        tree_post = ttk.Treeview(f_post, columns=cols_post, show="headings", height=20, bootstyle="secondary")
+        for c in cols_post: tree_post.heading(c, text=c)
+        tree_post.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        post_data = [
+            ("PLA", "55-60°C", "6-12 Hours", "Increases Heat Resistance"),
+            ("PETG", "65-70°C", "6-12 Hours", "Relieves Stress"),
+            ("ABS", "80-90°C", "6-12 Hours", "Increases Strength"),
+            ("ASA", "80-90°C", "6-12 Hours", "Increases Strength"),
+            ("PC", "85-100°C", "6-12 Hours", "Max Strength & Stiffness"),
+            ("PAHT-CF", "90-130°C", "6-12 Hours", "Max Heat Resistance (194°C)")
+        ]
+        for row in post_data: tree_post.insert("", "end", values=row)
+
+    def build_dynamic_gallery_tabs(self):
+        image_files = [] 
+        search_folder = get_base_path()
         extensions = ["png", "jpg", "jpeg"]
         for ext in extensions:
             pattern = os.path.join(search_folder, f"ref_*.{ext}")
             found_extras = glob.glob(pattern)
             image_files.extend(found_extras)
         
-        image_files = list(set(image_files)) # Remove duplicates
+        image_files = list(set(image_files))
         
         for img_path in image_files:
             try:
+                # SKIP specific images to avoid duplicates or clutter
+                bname = os.path.basename(img_path).lower()
+                if "spool_reference" in bname: continue
+                if "bambu filament guide" in bname: continue # Auto-hide old chart
+
                 tab_frame = ttk.Frame(self.gallery_notebook)
                 fname = os.path.basename(img_path)
-                if "spool_reference" in fname: title = "Estimator"
-                else: title = os.path.splitext(fname)[0].replace("ref_", "")
-                
+                title = os.path.splitext(fname)[0].replace("ref_", "")
                 self.gallery_notebook.add(tab_frame, text=f" 📷 {title} ")
                 
                 pil_img = Image.open(img_path)
-                pil_img.thumbnail((800, 600)) # Larger view for charts
+                pil_img.thumbnail((1250, 850)) 
                 tk_img = ImageTk.PhotoImage(pil_img)
                 self.ref_images_cache.append(tk_img)
-                
                 ttk.Label(tab_frame, image=tk_img).pack(anchor="center", pady=10)
+                
+                def open_image(path=img_path):
+                    try: os.startfile(path)
+                    except: webbrowser.open(path)
+                ttk.Button(tab_frame, text="🔍 Open Full Size Image", command=open_image, bootstyle="secondary-outline").pack(pady=5)
             except: pass
 
-        # --- TAB LAST: FIELD MANUAL ---
+    def build_manual_tab(self):
         man_tab = ttk.Frame(self.gallery_notebook); self.gallery_notebook.add(man_tab, text=" 📖 Manual ")
-        
         search_frame = ttk.Frame(man_tab); search_frame.pack(fill="x", pady=5)
         ttk.Label(search_frame, text="🔍 Search Issue:").pack(side="left", padx=5)
         self.entry_search = ttk.Entry(search_frame); self.entry_search.pack(side="left", fill="x", expand=True, padx=5)
@@ -1424,6 +1528,143 @@ class FilamentManagerApp:
         self.txt_info.pack(fill="both", expand=True, pady=10)
         self.mat_combo.bind("<<ComboboxSelected>>", self.update_material_view)
         self.update_material_view(None)
+
+    def scan_for_custom_profiles(self):
+        """Scans folder for .json files that look like Bambu Studio profiles."""
+        custom_rows = []
+        sys_files = ["filament_inventory.json", "sales_history.json", "maintenance_log.json", "job_queue.json", "config.json"]
+        
+        # Look in 'profiles' subdirectory
+        search_paths = []
+        profiles_dir = os.path.join(get_base_path(), "profiles")
+        if not os.path.exists(profiles_dir):
+            try: os.makedirs(profiles_dir) # Auto-create if missing
+            except: pass
+            
+        search_paths.append(os.path.join(profiles_dir, "*.json"))
+
+        found_files = []
+        for p in search_paths:
+            found_files.extend(glob.glob(p))
+
+        for fpath in found_files:
+            if os.path.basename(fpath) in sys_files: continue
+            
+            try:
+                with open(fpath, "r") as f:
+                    d = json.load(f)
+                    
+                # Basic check if it's a profile
+                if "filament_settings_id" not in d and "name" not in d: continue
+                
+                # exact filename without extension
+                display_name = os.path.splitext(os.path.basename(fpath))[0]
+                name_lower = display_name.lower()
+                
+                # Extract Temps (handle lists ["220"] or raw numbers)
+                def get_val(key):
+                    v = d.get(key, ["N/A"])
+                    if isinstance(v, list): return v[0]
+                    return str(v)
+
+                n_temp = get_val("nozzle_temperature")
+                b_temp = get_val("textured_plate_temp")
+                if b_temp == "N/A": b_temp = get_val("bed_temperature") 
+                
+                fan_min = get_val("fan_min_speed")
+                fan_max = get_val("fan_max_speed")
+                fan = f"{fan_min}-{fan_max}%"
+                if fan_min == "N/A": fan = "N/A"
+
+                # 1. Determine Nozzle
+                nozzle = "Brass 0.4mm" # Default
+                if any(x in name_lower for x in ["cf", "gf", "glow", "wood", "carbon", "glass"]):
+                    nozzle = "Hardened 0.4/0.6mm"
+                elif "abrasive" in name_lower:
+                    nozzle = "Hardened 0.6mm"
+
+                # 2. Determine Difficulty
+                diff = "Medium"
+                if "pla" in name_lower: diff = "Easy"
+                elif "petg" in name_lower: diff = "Medium"
+                elif "tpu" in name_lower: diff = "Medium/Hard"
+                elif "abs" in name_lower or "asa" in name_lower: diff = "Hard (Enclosure)"
+                elif "pc" in name_lower or "nylon" in name_lower or "pa" in name_lower: diff = "Expert"
+
+                row = (display_name, nozzle, f"{n_temp}°C", f"{b_temp}°C", fan, diff, f"File: {fpath}")
+                custom_rows.append(row)
+            except: pass
+        return custom_rows
+
+    def on_guide_double_click(self, event):
+        """Opens the source JSON file if a custom row is double-clicked."""
+        item_id = self.fil_tree.selection()
+        if not item_id: return
+        
+        values = self.fil_tree.item(item_id[0], "values")
+        notes = values[6] # Last column (hidden file path)
+        
+        if notes.startswith("File:"):
+            fname = notes.replace("File: ", "").strip()
+            if os.path.exists(fname):
+                # Ask user action
+                choice = messagebox.askyesnocancel("Profile Action", f"Action for '{values[0]}':\n\nYes = 📂 Export/Download JSON file\nNo = 🔍 Inspect Values here")
+                
+                if choice is True: # Yes -> Export
+                    save_path = filedialog.asksaveasfilename(
+                        defaultextension=".json",
+                        initialfile=os.path.basename(fname),
+                        filetypes=[("JSON Profile", "*.json")]
+                    )
+                    if save_path:
+                        try:
+                            shutil.copy(fname, save_path)
+                            messagebox.showinfo("Success", f"Profile saved to:\n{save_path}")
+                        except Exception as e:
+                            messagebox.showerror("Error", f"Failed to save:\n{e}")
+                
+                elif choice is False: # No -> Inspect
+                    self.open_profile_inspector(fname)
+            else:
+                messagebox.showerror("Error", f"File not found:\n{fname}")
+
+    def open_profile_inspector(self, fpath):
+        """Parses and displays the JSON profile in a clean Toplevel window."""
+        try:
+            with open(fpath, 'r') as f:
+                data = json.load(f)
+            
+            top = tk.Toplevel(self.root)
+            top.title(f"Profile Inspector: {os.path.basename(fpath)}")
+            top.geometry("600x800")
+            
+            # Treeview
+            cols = ("Setting", "Value")
+            tree = ttk.Treeview(top, columns=cols, show="headings")
+            tree.heading("Setting", text="Setting")
+            tree.heading("Value", text="Value")
+            tree.column("Setting", width=250)
+            tree.column("Value", width=300)
+            tree.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # Clean keys and populate tree
+            for k, v in data.items():
+                # Format Key (filament_retraction_speed -> Retraction Speed)
+                clean_key = k.replace("filament_", "").replace("_", " ").title()
+                
+                # Format Value (Handle list ["30"] -> "30")
+                if isinstance(v, list):
+                    clean_val = ", ".join(str(x) for x in v)
+                else:
+                    clean_val = str(v)
+                
+                tree.insert("", "end", values=(clean_key, clean_val))
+                
+            # Close button
+            ttk.Button(top, text="Close", command=top.destroy, bootstyle="secondary").pack(pady=5)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not parse profile:\n{e}")
 
     def perform_search(self):
         query = self.entry_search.get().lower().strip()
