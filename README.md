@@ -95,8 +95,4 @@ Go to the **🛠️ Maintenance** tab to track:
 * **Data Storage:** Local JSON files (`filament_inventory.json`).
 * **Privacy:** This application is "Cloud Agnostic". It does not send data to any server. It simply reads/writes text files in the folder you choose.
 
-<<<<<<< HEAD
 *Created by Mobius457 for the 3D Printing Community.*
-=======
-*Created by Mobius457 for the 3D Printing Community.*
->>>>>>> c41f95370ea7d12d0616742590bc8c949cba9a7d
