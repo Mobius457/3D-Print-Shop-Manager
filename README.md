@@ -54,5 +54,16 @@ From simple inventory tracking to **AI-powered estimation** and **Live Printer M
 
 ---
 
+## 🤖 Setting up AI Features (Free)
+To use the **Slicer Screenshot Reader** or **Price Estimator**, you need a free Google Gemini API Key.
+
+1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
+2. Click **"Create API Key"**.
+3. Copy the key string (starts with `AIza...`).
+4. Open **PrintShopManager** -> **Settings** (or try to use an AI feature).
+5. Paste your key when prompted.
+
+
+
 ## ⚖️ License
 MIT License - Free for personal and commercial use.
