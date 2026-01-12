@@ -271,18 +271,19 @@ class FilamentManagerApp:
         self.root.title(f"3D Print Manager - {VERSION}")
         self.root.geometry("1400x900")
         self.style = ttk.Style(theme="litera")
-        self.PURPLE_MAIN = "#6f42c1" 
-        self.PURPLE_LIGHT = "#e0d8f0"
+        self.PURPLE_MAIN = "#7c3aed"
+        self.PURPLE_LIGHT = "#f3e8ff"
         self.BG_COLOR = "#f8f9fa"
         self.CARD_BG = "#ffffff"
         self.style.configure('TFrame', background=self.BG_COLOR)
-        self.style.configure('Card.TFrame', background=self.CARD_BG, relief="flat")
+        self.style.configure('Card.TFrame', background=self.CARD_BG, relief="flat", borderwidth=0)
         self.style.configure('Sidebar.TFrame', background=self.CARD_BG)
         self.style.configure('Purple.TButton', background=self.PURPLE_MAIN, foreground='white', font=("Segoe UI", 10, "bold"), borderwidth=0)
-        self.style.map('Purple.TButton', background=[('active', '#5a32a3')])
+        self.style.map('Purple.TButton', background=[('active', '#6d28d9')])
         self.style.configure('Ghost.TButton', background='white', foreground=self.PURPLE_MAIN, font=("Segoe UI", 10), borderwidth=1, bordercolor=self.PURPLE_MAIN)
         self.style.configure('Nav.TButton', background=self.CARD_BG, foreground='#555', font=("Segoe UI", 11), anchor="w", padding=15, relief="flat")
         self.style.map('Nav.TButton', background=[('active', self.PURPLE_LIGHT)], foreground=[('active', self.PURPLE_MAIN)])
+        self.style.configure('Clean.TEntry', fieldbackground='white', bordercolor='#e5e7eb', borderwidth=1, relief='flat')
         
         self.perform_auto_backup()
         self.defaults = self.load_sticky_settings()
@@ -488,94 +489,171 @@ class FilamentManagerApp:
         if title: ttk.Label(card, text=title, font=("Segoe UI", 11, "bold"), background=self.CARD_BG).pack(anchor="w", pady=(0, 10))
         return card
 
+    def create_stat_card(self, parent, title, value, subtext="", icon_char=""):
+        container = ttk.Frame(parent, style='Card.TFrame', padding=5) # Wrapper for grid margins if needed, but we'll use grid padding
+        card = ttk.Frame(parent, style='Card.TFrame', padding=25)
+
+        # Header Row
+        head = ttk.Frame(card, style='Card.TFrame')
+        head.pack(fill="x", pady=(0, 10))
+        ttk.Label(head, text=title, font=("Segoe UI", 11, "bold"), foreground="#4b5563", background=self.CARD_BG).pack(side="left")
+        if icon_char:
+            ttk.Label(head, text=icon_char, font=("Segoe UI", 14), foreground="#9ca3af", background=self.CARD_BG).pack(side="right")
+
+        # Value
+        ttk.Label(card, text=value, font=("Segoe UI", 28, "bold"), foreground="#111827", background=self.CARD_BG).pack(anchor="w", pady=(0, 5))
+
+        # Subtext
+        if subtext:
+            ttk.Label(card, text=subtext, font=("Segoe UI", 9), foreground="#6b7280", background=self.CARD_BG).pack(anchor="w")
+
+        return card
+
     # --- DASHBOARD ---
     def show_dashboard(self):
         self.clear_content()
-        head = ttk.Frame(self.content_area); head.pack(fill="x", pady=(0, 20))
-        ttk.Label(head, text="Projects Dashboard", font=("Segoe UI", 20, "bold")).pack(side="left")
+        # Top Header
+        head = ttk.Frame(self.content_area); head.pack(fill="x", pady=(0, 30))
+        # Left: Title
+        h_left = ttk.Frame(head); h_left.pack(side="left")
+        ttk.Label(h_left, text="Projects Dashboard", font=("Segoe UI", 24, "bold")).pack(anchor="w")
+        ttk.Label(h_left, text="Overview of your printing metrics", font=("Segoe UI", 11), foreground="gray").pack(anchor="w")
+
+        # Right: Actions
         ttk.Button(head, text="⚙️ Settings", style='Ghost.TButton', command=self.configure_printer).pack(side="right", padx=5)
         ttk.Button(head, text="Refresh", style='Ghost.TButton', command=self.refresh_dashboard).pack(side="right")
-        self.lbl_printer_status = ttk.Label(head, text="Printer: Offline", font=("Segoe UI", 10), foreground="gray"); self.lbl_printer_status.pack(side="right", padx=15)
+        self.lbl_printer_status = ttk.Label(head, text="Printer: Offline", font=("Segoe UI", 10, "bold"), foreground="gray")
+        self.lbl_printer_status.pack(side="right", padx=15)
         
-        grid_container = ttk.Frame(self.content_area); grid_container.pack(fill="both", expand=True)
-        grid_container.columnconfigure(0, weight=1); grid_container.columnconfigure(1, weight=1); grid_container.columnconfigure(2, weight=1)
+        # Stats Grid
+        stats_frame = ttk.Frame(self.content_area)
+        stats_frame.pack(fill="x", pady=(0, 30))
+        stats_frame.columnconfigure(0, weight=1); stats_frame.columnconfigure(1, weight=1)
 
-        c1 = self.create_card(grid_container, "Total Projects", 0, 0)
-        self.lbl_total_proj = ttk.Label(c1, text="0", font=("Segoe UI", 28, "bold"), background=self.CARD_BG); self.lbl_total_proj.pack(anchor="w")
-        c2 = self.create_card(grid_container, "Inventory Value", 0, 1)
-        self.lbl_inv_val = ttk.Label(c2, text="$0.00", font=("Segoe UI", 28, "bold"), background=self.CARD_BG); self.lbl_inv_val.pack(anchor="w")
+        # Row 1
+        self.card_total = self.create_stat_card(stats_frame, "Total Projects", "0", "0 active, 0 completed", "📦")
+        self.card_total.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+
+        self.card_avg = self.create_stat_card(stats_frame, "Average Filament Cost", "$0.00", "Per delivered project (actual usage)", "💲")
+        self.card_avg.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+
+        self.card_usage = self.create_stat_card(stats_frame, "Remaining Usage", "0g", "Total inventory weight", "🧶")
+        self.card_usage.grid(row=0, column=1, padx=10, pady=10, sticky="ew")
+
+        self.card_low = self.create_stat_card(stats_frame, "Low Stock", "0", "Spools with < 200g remaining", "⚠️")
+        self.card_low.grid(row=1, column=1, padx=10, pady=10, sticky="ew")
+
+        # Live Status & Analytics Row
+        row2 = ttk.Frame(self.content_area); row2.pack(fill="both", expand=True)
+        row2.columnconfigure(0, weight=1); row2.columnconfigure(1, weight=2)
+
+        # Live Status
+        c_live = self.create_card(row2, "Live Printer Status", 0, 0)
+        self.lbl_live_state = ttk.Label(c_live, text="OFFLINE", font=("Segoe UI", 16, "bold"), foreground="gray", background=self.CARD_BG)
+        self.lbl_live_state.pack(anchor="w", pady=(5,0))
+        self.lbl_live_temps = ttk.Label(c_live, text="Nozzle: -- | Bed: --", background=self.CARD_BG); self.lbl_live_temps.pack(anchor="w")
         
-        c3 = self.create_card(grid_container, "Live Status", 0, 2)
-        self.lbl_live_state = ttk.Label(c3, text="OFFLINE", font=("Segoe UI", 14, "bold"), foreground="gray", background=self.CARD_BG); self.lbl_live_state.pack(anchor="w")
-        self.lbl_live_temps = ttk.Label(c3, text="Nozzle: -- | Bed: --", background=self.CARD_BG); self.lbl_live_temps.pack(anchor="w")
-        self.dash_progress = ttk.Progressbar(c3, value=0, maximum=100, style="success.Horizontal.TProgressbar"); self.dash_progress.pack(fill="x", pady=10)
+        self.dash_progress = ttk.Progressbar(c_live, value=0, maximum=100, style="success.Horizontal.TProgressbar")
+        self.dash_progress.pack(fill="x", pady=15)
         
-        d_row = ttk.Frame(c3, style='Card.TFrame'); d_row.pack(fill="x")
+        d_row = ttk.Frame(c_live, style='Card.TFrame'); d_row.pack(fill="x")
         self.lbl_live_file = ttk.Label(d_row, text="File: --", font=("Segoe UI", 9), background=self.CARD_BG); self.lbl_live_file.pack(side="left")
         self.lbl_live_time = ttk.Label(d_row, text="Time: --", font=("Segoe UI", 9), background=self.CARD_BG); self.lbl_live_time.pack(side="right")
-        self.lbl_live_pct = ttk.Label(c3, text="0%", font=("Segoe UI", 9, "bold"), background=self.CARD_BG); self.lbl_live_pct.pack(anchor="e")
+        self.lbl_live_pct = ttk.Label(c_live, text="0%", font=("Segoe UI", 12, "bold"), background=self.CARD_BG); self.lbl_live_pct.pack(anchor="e")
 
-        c4 = self.create_card(grid_container, "Alerts", 1, 0, colspan=3)
-        self.lbl_alerts = ttk.Label(c4, text="No alerts.", background=self.CARD_BG, foreground="gray"); self.lbl_alerts.pack(anchor="w")
-        
+        # Analytics
         if HAS_MATPLOTLIB:
-            c5 = self.create_card(grid_container, "Analytics", 2, 0, colspan=3)
-            f = plt.Figure(figsize=(5, 2.5), dpi=100, facecolor=self.CARD_BG)
+            c_an = self.create_card(row2, "Revenue Trend", 0, 1)
+            f = plt.Figure(figsize=(5, 3), dpi=100, facecolor=self.CARD_BG)
             ax = f.add_subplot(111)
-            dates = [h['date'][:10] for h in self.history[-10:]]
-            costs = [h['sold_for'] for h in self.history[-10:]]
-            if not dates: dates = ["Jan", "Feb"]; costs = [0, 0]
-            ax.plot(dates, costs, color=self.PURPLE_MAIN, marker='o')
+            dates = [h['date'][:5] for h in self.history[-10:]]
+            vals = [h.get('sold_for', 0) for h in self.history[-10:]]
+            if not dates: dates = ["-"]; vals = [0]
+
+            # Style the plot
+            ax.plot(dates, vals, color=self.PURPLE_MAIN, marker='o', linewidth=2)
+            ax.fill_between(dates, vals, color=self.PURPLE_LIGHT, alpha=0.3)
             ax.set_facecolor(self.CARD_BG)
-            ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
-            canvas = FigureCanvasTkAgg(f, c5); canvas.get_tk_widget().pack(fill="both", expand=True)
+            ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False); ax.spines['left'].set_visible(False)
+            ax.tick_params(axis='x', colors='gray'); ax.tick_params(axis='y', colors='gray')
+            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
+            canvas = FigureCanvasTkAgg(f, c_an); canvas.get_tk_widget().pack(fill="both", expand=True)
 
         self.refresh_dashboard_data()
 
     def refresh_dashboard(self): self.load_all_data(); self.refresh_dashboard_data()
     def refresh_dashboard_data(self):
-        self.lbl_total_proj.config(text=str(len(self.history)))
-        val = sum((i['cost'] * (i['weight']/1000)) for i in self.inventory)
-        self.lbl_inv_val.config(text=f"${val:,.2f}")
-        alerts = []
-        low = [i['name'] for i in self.inventory if i['weight'] < 200]
-        if low: alerts.append(f"⚠️ Low Stock: {', '.join(low[:2])}")
-        if self.queue: alerts.append(f"⏳ {len(self.queue)} Pending Jobs")
-        if alerts: self.lbl_alerts.config(text="\n".join(alerts), foreground="#dc3545")
-        else: self.lbl_alerts.config(text="✅ All Systems Nominal", foreground="#28a745")
+        # Update Total Projects
+        count = len(self.history)
+        # Hacky way to update labels inside the complex card structure without storing references to every sub-label
+        # Actually, I should store references. But for now, I'll just traverse or rebuild.
+        # Better: Rebuild? No, flickers.
+        # Best: traverse children.
+
+        def set_card_val(card_frame, val, sub=""):
+            # Child 1 is Header, Child 2 is Value Label, Child 3 is Subtext
+            try:
+                ch = card_frame.winfo_children()
+                # ch[0] is header, ch[1] is Value, ch[2] is Subtext
+                if len(ch) > 1: ch[1].config(text=val)
+                if len(ch) > 2 and sub: ch[2].config(text=sub)
+            except: pass
+
+        set_card_val(self.card_total, str(count), f"{count} completed")
+
+        # Avg Cost
+        avg = 0
+        if count > 0:
+            # Try to find cost. If missing, estimate from profit
+            total_cost = 0
+            for h in self.history:
+                if 'cost' in h: total_cost += float(h['cost'])
+                elif 'sold_for' in h and 'profit' in h: total_cost += (float(h['sold_for']) - float(h['profit']))
+            avg = total_cost / count
+        set_card_val(self.card_avg, f"${avg:.2f}")
+
+        # Usage
+        total_w = sum(int(i.get('weight', 0)) for i in self.inventory)
+        set_card_val(self.card_usage, f"{total_w}g")
+
+        # Low Stock
+        low_count = sum(1 for i in self.inventory if int(i.get('weight',0)) < 200)
+        set_card_val(self.card_low, str(low_count), f"{low_count} items need restock")
 
     # --- INVENTORY ---
     def show_inventory(self):
         self.clear_content()
-        ttk.Label(self.content_area, text="Filament Inventory", font=("Segoe UI", 20, "bold")).pack(pady=(0, 20))
-        form_container = ttk.Frame(self.content_area); form_container.pack(fill="x", pady=10)
-        add_card = self.create_card(form_container, row=0, col=0)
-        form_container.columnconfigure(0, weight=1); add_card.grid(sticky="ew")
         
-        top = ttk.Frame(add_card, style='Card.TFrame'); top.pack(fill="x", pady=(0,10))
-        ttk.Label(top, text="+ New Filament", font=("Segoe UI", 12, "bold"), background=self.CARD_BG).pack(side="left")
-        ttk.Button(top, text="✨ AI Scan", style='Purple.TButton', command=self.open_ai_scanner).pack(side="right")
-        ttk.Button(top, text="💰 Check Price", style='Ghost.TButton', command=self.check_price).pack(side="right", padx=5)
-
-        form = ttk.Frame(add_card, style='Card.TFrame'); form.pack(fill="x")
-        ttk.Label(form, text="Brand", background=self.CARD_BG).grid(row=0, column=0, padx=5)
-        self.inv_name = ttk.Entry(form, width=15); self.inv_name.grid(row=1, column=0, padx=5)
-        ttk.Label(form, text="Material", background=self.CARD_BG).grid(row=0, column=1, padx=5)
-        self.cb_inv_mat = ttk.Combobox(form, values=["PLA", "PETG", "ABS"], width=10); self.cb_inv_mat.grid(row=1, column=1, padx=5)
-        ttk.Label(form, text="Color", background=self.CARD_BG).grid(row=0, column=2, padx=5)
-        self.inv_color = ttk.Entry(form, width=10); self.inv_color.grid(row=1, column=2, padx=5)
-        ttk.Label(form, text="Cost", background=self.CARD_BG).grid(row=0, column=3, padx=5)
-        self.inv_cost = ttk.Entry(form, width=8); self.inv_cost.insert(0,"20"); self.inv_cost.grid(row=1, column=3, padx=5)
-        ttk.Label(form, text="Weight", background=self.CARD_BG).grid(row=0, column=4, padx=5)
-        self.inv_weight = ttk.Entry(form, width=8); self.inv_weight.insert(0,"1000"); self.inv_weight.grid(row=1, column=4, padx=5)
+        # Header
+        head = ttk.Frame(self.content_area)
+        head.pack(fill="x", pady=(0, 20))
         
-        btn_frame = ttk.Frame(add_card, style='Card.TFrame'); btn_frame.pack(fill="x", pady=10)
-        self.inv_id = ttk.Entry(btn_frame, width=5) # hidden
-        ttk.Button(btn_frame, text="Add", style='Purple.TButton', command=self.save_spool).pack(side="right")
+        ttk.Label(head, text="Filament Inventory", font=("Segoe UI", 24, "bold")).pack(side="left")
 
-        self.tree = ttk.Treeview(self.content_area, columns=("Brand", "Mat", "Color", "Weight", "Cost"), show="headings")
-        for c in ("Brand", "Mat", "Color", "Weight", "Cost"): self.tree.heading(c, text=c)
-        self.tree.pack(fill="both", expand=True, pady=10)
+        # Right Controls
+        # Note: open_add_filament_modal will be defined in the next step
+        btn_add = ttk.Button(head, text="+ New Filament", style='Purple.TButton', command=self.open_add_filament_modal)
+        btn_add.pack(side="right")
+
+        # Search
+        f_search = ttk.Frame(head)
+        f_search.pack(side="right", padx=15)
+        self.entry_search = ttk.Entry(f_search, style='Clean.TEntry', width=25)
+        self.entry_search.pack(side="left")
+        self.entry_search.insert(0, "Search...")
+
+        # Tree Card
+        tree_card = ttk.Frame(self.content_area, style='Card.TFrame', padding=15)
+        tree_card.pack(fill="both", expand=True)
+
+        self.tree = ttk.Treeview(tree_card, columns=("Brand", "Mat", "Color", "Weight", "Cost", "Loc"), show="headings", height=20)
+        cols = {"Brand": 150, "Mat": 80, "Color": 100, "Weight": 80, "Cost": 80, "Loc": 100}
+        for c, w in cols.items():
+            self.tree.heading(c, text=c)
+            self.tree.column(c, width=w)
+
+        self.tree.pack(fill="both", expand=True)
         self.refresh_inventory_list()
 
     # --- AI SLICER READER ---
@@ -814,21 +892,117 @@ class FilamentManagerApp:
         
         self.lbl_live_temps.config(text=f"Nozzle: {int(data.get('nozzle',0))}°C | Bed: {int(data.get('bed',0))}°C")
 
-    def save_spool(self):
+    def open_add_filament_modal(self):
+        self.add_win = tk.Toplevel(self.root)
+        self.add_win.title("New Filament")
+        self.add_win.geometry("800x700")
+        self.add_win.configure(bg="white")
+
+        # Header
+        h = ttk.Frame(self.add_win, padding=20, style="Card.TFrame")
+        h.pack(fill="x")
+        ttk.Label(h, text="+ New Filament", font=("Segoe UI", 16, "bold"), background=self.CARD_BG).pack(anchor="w")
+        ttk.Label(h, text="Enter the details of your new filament spool", font=("Segoe UI", 10), foreground="gray", background=self.CARD_BG).pack(anchor="w")
+
+        # Scrollable Content if needed, but 800x700 fits. We'll use a frame.
+        body = ttk.Frame(self.add_win, padding=20)
+        body.pack(fill="both", expand=True)
+
+        # 1. Quick Setup (Purple)
+        f_qs = ttk.Frame(body, style='Card.TFrame', padding=15)
+        f_qs.configure(style='Purple.TFrame') # Need to config this or just color it
+        # Actually standard Card is white. I'll make a custom frame for purple bg effect or just use label
+        f_qs.pack(fill="x", pady=(0, 15))
+        # Purple strip hack: Use a label or frame with bg
+        qs_head = ttk.Frame(f_qs, style='Card.TFrame'); qs_head.pack(fill="x")
+        # Since I can't easily make a purple bg frame without defining style, I'll stick to white card with purple accent
+
+        ttk.Label(qs_head, text="Quick Setup", font=("Segoe UI", 11, "bold"), background=self.CARD_BG).pack(anchor="w")
+        ttk.Label(qs_head, text="Scan any filament label to auto-populate fields", font=("Segoe UI", 9), foreground="gray", background=self.CARD_BG).pack(anchor="w")
+        ttk.Button(qs_head, text="Scan Label", style='Purple.TButton', command=self.open_ai_scanner_modal).pack(anchor="e", pady=(0, 10))
+
+        # 2. Basic Info
+        f_bi = ttk.Frame(body, style='Card.TFrame', padding=15)
+        f_bi.pack(fill="x", pady=(0, 15))
+        ttk.Label(f_bi, text="Basic Information", font=("Segoe UI", 11, "bold"), foreground=self.PURPLE_MAIN, background=self.CARD_BG).pack(anchor="w", pady=(0, 10))
+
+        # Grid for inputs
+        g_bi = ttk.Frame(f_bi, style='Card.TFrame'); g_bi.pack(fill="x")
+
+        ttk.Label(g_bi, text="Brand", background=self.CARD_BG).grid(row=0, column=0, sticky="w", padx=5)
+        self.entry_add_brand = ttk.Entry(g_bi, style='Clean.TEntry', width=20); self.entry_add_brand.grid(row=1, column=0, padx=5, pady=(0, 10))
+
+        ttk.Label(g_bi, text="Material", background=self.CARD_BG).grid(row=0, column=1, sticky="w", padx=5)
+        self.entry_add_mat = ttk.Combobox(g_bi, values=["PLA", "PETG", "ABS", "TPU", "ASA"], width=18); self.entry_add_mat.grid(row=1, column=1, padx=5, pady=(0, 10))
+
+        ttk.Label(g_bi, text="Color", background=self.CARD_BG).grid(row=0, column=2, sticky="w", padx=5)
+        self.entry_add_col = ttk.Entry(g_bi, style='Clean.TEntry', width=20); self.entry_add_col.grid(row=1, column=2, padx=5, pady=(0, 10))
+
+        # 3. Storage & Cost
+        f_sc = ttk.Frame(body, style='Card.TFrame', padding=15)
+        f_sc.pack(fill="x", pady=(0, 15))
+        ttk.Label(f_sc, text="Storage & Cost", font=("Segoe UI", 11, "bold"), foreground=self.PURPLE_MAIN, background=self.CARD_BG).pack(anchor="w", pady=(0, 10))
+
+        g_sc = ttk.Frame(f_sc, style='Card.TFrame'); g_sc.pack(fill="x")
+        ttk.Label(g_sc, text="Location", background=self.CARD_BG).grid(row=0, column=0, sticky="w", padx=5)
+        self.entry_add_loc = ttk.Entry(g_sc, style='Clean.TEntry', width=30); self.entry_add_loc.grid(row=1, column=0, padx=5)
+        self.entry_add_loc.insert(0, "General")
+
+        ttk.Label(g_sc, text="Cost ($)", background=self.CARD_BG).grid(row=0, column=1, sticky="w", padx=5)
+        self.entry_add_cost = ttk.Entry(g_sc, style='Clean.TEntry', width=15); self.entry_add_cost.grid(row=1, column=1, padx=5)
+
+        # 4. Spool Management
+        f_sm = ttk.Frame(body, style='Card.TFrame', padding=15)
+        f_sm.pack(fill="x", pady=(0, 15))
+        ttk.Label(f_sm, text="Spool Management", font=("Segoe UI", 11, "bold"), foreground=self.PURPLE_MAIN, background=self.CARD_BG).pack(anchor="w", pady=(0, 10))
+
+        g_sm = ttk.Frame(f_sm, style='Card.TFrame'); g_sm.pack(fill="x")
+        ttk.Label(g_sm, text="Total Weight (g)", background=self.CARD_BG).grid(row=0, column=0, sticky="w", padx=5)
+        self.entry_add_weight = ttk.Entry(g_sm, style='Clean.TEntry', width=15); self.entry_add_weight.grid(row=1, column=0, padx=5)
+        self.entry_add_weight.insert(0, "1000")
+
+        # Footer Actions
+        foot = ttk.Frame(self.add_win, padding=20)
+        foot.pack(fill="x", side="bottom")
+
+        self.var_add_another = tk.BooleanVar()
+        ttk.Checkbutton(foot, text="Add another", variable=self.var_add_another).pack(side="left")
+
+        ttk.Button(foot, text="+ Add Filament", style='Purple.TButton', command=self.save_new_filament).pack(side="right")
+
+    def open_ai_scanner_modal(self):
+        # Wrapper to target the new modal fields
+        path = filedialog.askopenfilename()
+        if not path: return
+        res = self.ai_manager.analyze_spool_image(path)
+        if res and not 'error' in res:
+             if res.get('brand'): self.entry_add_brand.delete(0, tk.END); self.entry_add_brand.insert(0, res.get('brand'))
+             if res.get('color'): self.entry_add_col.delete(0, tk.END); self.entry_add_col.insert(0, res.get('color'))
+             if res.get('material'): self.entry_add_mat.set(res.get('material'))
+             if res.get('weight'): self.entry_add_weight.delete(0, tk.END); self.entry_add_weight.insert(0, str(res.get('weight')))
+
+    def save_new_filament(self):
         try:
             item = {
                 "id": str(len(self.inventory)+1).zfill(3),
-                "name": self.inv_name.get(),
-                "material": self.cb_inv_mat.get(),
-                "color": self.inv_color.get(),
-                "weight": float(self.inv_weight.get()),
-                "cost": float(self.inv_cost.get())
+                "name": self.entry_add_brand.get(),
+                "material": self.entry_add_mat.get(),
+                "color": self.entry_add_col.get(),
+                "weight": float(self.entry_add_weight.get()),
+                "cost": float(self.entry_add_cost.get()),
+                "location": self.entry_add_loc.get()
             }
             self.inventory.append(item)
             self.save_json(self.inventory, DB_FILE)
             self.refresh_inventory_list()
             messagebox.showinfo("Success", "Filament Added")
-        except: messagebox.showerror("Error", "Check inputs")
+            if not self.var_add_another.get():
+                self.add_win.destroy()
+            else:
+                # Clear fields
+                self.entry_add_brand.delete(0, tk.END)
+                self.entry_add_col.delete(0, tk.END)
+        except Exception as e: messagebox.showerror("Error", f"Check inputs: {e}")
 
     def refresh_inventory_list(self):
         for i in self.tree.get_children(): self.tree.delete(i)
@@ -837,7 +1011,8 @@ class FilamentManagerApp:
             w = int(item.get('weight', 0))
             # Clean cost display (2 decimal places)
             c = float(item.get('cost', 0))
-            self.tree.insert("", "end", values=(item.get('name'), item.get('material'), item.get('color'), w, f"${c:.2f}"))
+            l = item.get('location', '-')
+            self.tree.insert("", "end", values=(item.get('name'), item.get('material'), item.get('color'), w, f"${c:.2f}", l))
 
     def refresh_history_list(self):
         for i in self.hist_tree.get_children(): self.hist_tree.delete(i)
