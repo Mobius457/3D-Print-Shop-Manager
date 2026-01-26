@@ -1,0 +1,59 @@
+{
+    "cool_plate_temp": [
+        "105"
+    ],
+    "cool_plate_temp_initial_layer": [
+        "105"
+    ],
+    "during_print_exhaust_fan_speed": [
+        "20"
+    ],
+    "eng_plate_temp": [
+        "105"
+    ],
+    "eng_plate_temp_initial_layer": [
+        "110"
+    ],
+    "fan_max_speed": [
+        "80"
+    ],
+    "filament_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "filament_max_volumetric_speed": [
+        "17",
+        "nil"
+    ],
+    "filament_settings_id": [
+        "BEST ASA_ABS"
+    ],
+    "filament_vendor": [
+        "no one"
+    ],
+    "from": "User",
+    "hot_plate_temp": [
+        "105"
+    ],
+    "hot_plate_temp_initial_layer": [
+        "110"
+    ],
+    "inherits": "Bambu ABS @BBL X1C",
+    "name": "BEST ASA_ABS",
+    "nozzle_temperature_range_high": [
+        "270"
+    ],
+    "overhang_fan_speed": [
+        "100"
+    ],
+    "slow_down_layer_time": [
+        "8"
+    ],
+    "textured_plate_temp": [
+        "105"
+    ],
+    "textured_plate_temp_initial_layer": [
+        "110"
+    ],
+    "version": "2.4.0.10"
+}

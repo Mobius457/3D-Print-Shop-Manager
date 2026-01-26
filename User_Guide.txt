@@ -1,0 +1,19 @@
+Welcome to PrintShopManager!
+============================
+This tool helps you track your 3D printing inventory and calculate costs.
+
+GETTING STARTED:
+1. Open the "Inventory" tab.
+2. Click "Add New Spool" to log your first filament.
+3. Go to the "Calculator" to price out a job.
+
+OPTIONAL AI FEATURES:
+This app has "Smart" features powered by Google Gemini (AI).
+These are OFF by default. To enable them:
+1. Get a FREE API Key from: https://aistudio.google.com/app/apikey
+2. In the app, click "Settings" -> Paste your key.
+   (OR just click any AI button and it will ask you for it).
+
+TROUBLESHOOTING:
+- If the app doesn't open, ensure you unzipped the entire folder.
+- Data is saved automatically to 'filament_inventory.json' in this folder.

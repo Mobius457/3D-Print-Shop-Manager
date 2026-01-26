@@ -25,6 +25,7 @@ import threading
 import time
 import uuid
 import ssl
+import csv
 
 # --- OPTIONAL DEPENDENCIES ---
 try:
@@ -56,7 +57,7 @@ except: pass
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v15.0 (AI & Live Ops Update)"
+VERSION = "v15.3 (Calculator Fix)"
 
 # ======================================================
 # PATH & SYSTEM LOGIC
@@ -293,6 +294,15 @@ class FilamentManagerApp:
             
         self.show_dashboard()
 
+        # --- NEW USER WELCOME ---
+        if not self.inventory and not self.history:
+            self.root.after(500, lambda: messagebox.showinfo("Welcome!", 
+                "Welcome to Print Shop Manager!\n\n"
+                "It looks like this is your first time here.\n"
+                "1. Go to 'Inventory' to add your first spool.\n"
+                "2. Check 'Settings' if you want to set up AI or Printers.\n\n"
+                "Happy Printing!"))
+
     def configure_styles(self):
         self.style.configure("Treeview", rowheight=30, font=("Segoe UI", 9))
         self.style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"))
@@ -362,7 +372,7 @@ class FilamentManagerApp:
         btn.pack(fill="x", pady=2)
         self.nav_btns[text] = btn
 
-    # --- DASHBOARD ---
+    # --- DASHBOARD (UPDATED FOR FULL SCREEN) ---
     def show_dashboard(self):
         self.current_page_method = self.show_dashboard
         self.clear_content()
@@ -375,7 +385,7 @@ class FilamentManagerApp:
         grid = ttk.Frame(self.content_area); grid.pack(fill="x")
         grid.columnconfigure(0, weight=1); grid.columnconfigure(1, weight=1); grid.columnconfigure(2, weight=1); grid.columnconfigure(3, weight=1)
 
-        # Create Cards (Init with 0/loading)
+        # Create Cards
         c1, self.lbl_stat_proj, self.lbl_sub_proj = self.create_stat_card(grid, "Total Projects", "...", "...", "📦")
         c1.grid(row=0, column=0, sticky="ew", padx=10)
 
@@ -388,12 +398,16 @@ class FilamentManagerApp:
         c4, self.lbl_stat_low, self.lbl_sub_low = self.create_stat_card(grid, "Low Stock", "...", "...", "⚠️")
         c4.grid(row=0, column=3, sticky="ew", padx=10)
 
-        # Graph
+        # FIX: Graph takes all remaining vertical space
         if HAS_MATPLOTLIB:
             chart_wrapper = ttk.Frame(self.content_area)
             chart_wrapper.pack(fill="both", expand=True, pady=20)
-            chart_frame = self.create_card(chart_wrapper, "Revenue Trend (Last 7 Days)", row=0, col=0)
+            
+            # Configure grid to expand
             chart_wrapper.columnconfigure(0, weight=1) 
+            chart_wrapper.rowconfigure(0, weight=1) # <--- THIS FIXES THE BLANK SPACE
+            
+            chart_frame = self.create_card(chart_wrapper, "Revenue Trend (Last 7 Days)", row=0, col=0)
             self.draw_dashboard_chart(chart_frame)
 
         self.refresh_dashboard_data()
@@ -433,24 +447,20 @@ class FilamentManagerApp:
         self.refresh_dashboard_data()
 
     def refresh_dashboard_data(self):
-        # 1. Projects
         total_p = len(self.history)
         active_p = len(self.queue)
         self.lbl_stat_proj.config(text=str(total_p))
         self.lbl_sub_proj.config(text=f"{active_p} active in queue")
 
-        # 2. Avg Cost
         costs = [float(h.get('cost', 0)) for h in self.history]
         avg_cost = sum(costs) / len(costs) if costs else 0
         self.lbl_stat_cost.config(text=f"${avg_cost:.2f}")
         self.lbl_sub_cost.config(text="Per finished project")
 
-        # 3. Inventory
         total_g = sum(int(i.get('weight', 0)) for i in self.inventory)
         self.lbl_stat_inv.config(text=f"{total_g/1000:.1f} kg")
         self.lbl_sub_inv.config(text="Total filament remaining")
 
-        # 4. Low Stock
         low_count = sum(1 for i in self.inventory if int(i.get('weight',0)) < 200)
         self.lbl_stat_low.config(text=str(low_count))
         self.lbl_sub_low.config(text="Spools < 200g")
@@ -495,6 +505,10 @@ class FilamentManagerApp:
         ttk.Button(act_frame, text="Check Price", style='Secondary.TButton', command=self.check_price).pack(side="left", padx=2)
         ttk.Button(act_frame, text="✅/❌ Benchy", style='Ghost.TButton', command=self.toggle_benchy).pack(side="left", padx=10)
         
+        # --- NEW EXPORT BUTTON ---
+        ttk.Button(act_frame, text="💾 Export CSV", style='Success.TButton', command=self.export_inventory_to_csv).pack(side="left", padx=10)
+        # -------------------------
+
         ttk.Label(act_frame, text="🔍 Filter:", background=self.BG_COLOR).pack(side="left", padx=(20, 5))
         self.entry_search = ttk.Entry(act_frame)
         self.entry_search.pack(side="left", fill="x", expand=True)
@@ -517,6 +531,27 @@ class FilamentManagerApp:
         self.tree.pack(fill="both", expand=True, pady=5)
         
         self.refresh_inventory_list()
+
+    def export_inventory_to_csv(self):
+        fpath = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")], title="Export Inventory")
+        if not fpath: return
+        try:
+            with open(fpath, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["ID", "Name", "Material", "Color", "Weight (g)", "Cost ($)", "Benchy"])
+                for item in self.inventory:
+                    writer.writerow([
+                        item.get('id', ''),
+                        item.get('name', ''),
+                        item.get('material', ''),
+                        item.get('color', ''),
+                        item.get('weight', 0),
+                        item.get('cost', 0),
+                        item.get('benchy', '❌')
+                    ])
+            messagebox.showinfo("Success", f"Inventory exported to:\n{fpath}")
+        except Exception as e:
+            messagebox.showerror("Export Failed", str(e))
 
     def auto_gen_id(self):
         next_id = 1
@@ -652,45 +687,75 @@ class FilamentManagerApp:
             self.entry_hours.insert(0, f"{total_h:.2f}")
         messagebox.showinfo("Success", "Slicer data extracted!")
 
-    # --- CALCULATOR ---
+    # --- CALCULATOR (UPDATED FOR FULL SCREEN) ---
     def show_calculator(self):
         self.current_page_method = self.show_calculator
         self.clear_content()
         ttk.Label(self.content_area, text="Calculator", font=("Segoe UI", 20, "bold")).pack(pady=10)
-        self.tab_calc = ttk.Frame(self.content_area); self.tab_calc.pack(fill="both", expand=True)
         
-        f = ttk.Frame(self.tab_calc); f.pack(fill="both", expand=True, padx=20)
-        ttk.Label(f, text="Job Name:").pack(anchor="w"); self.entry_job_name = ttk.Entry(f); self.entry_job_name.pack(fill="x")
-        ttk.Label(f, text="Spool:").pack(anchor="w"); self.combo_filaments = ttk.Combobox(f, state="readonly"); self.combo_filaments.pack(fill="x")
+        # --- SPLIT LAYOUT (Paned Window) ---
+        # Corrected spelling: Panedwindow (lowercase w) for ttk/ttkbootstrap
+        paned = ttk.Panedwindow(self.content_area, orient=tk.HORIZONTAL)
+        paned.pack(fill="both", expand=True)
+        
+        # LEFT PANE: Inputs
+        f_left = ttk.Frame(paned, padding=10)
+        paned.add(f_left, weight=1)
+        
+        # RIGHT PANE: Output/List
+        f_right = ttk.Frame(paned, padding=10)
+        paned.add(f_right, weight=2) # Right side gets more space
+        
+        # -- INPUTS (Left) --
+        lf_job = ttk.Labelframe(f_left, text="Job Details", padding=10)
+        lf_job.pack(fill="x", pady=5)
+        ttk.Label(lf_job, text="Job Name:").pack(anchor="w"); self.entry_job_name = ttk.Entry(lf_job); self.entry_job_name.pack(fill="x")
+        ttk.Label(lf_job, text="Spool:").pack(anchor="w"); self.combo_filaments = ttk.Combobox(lf_job, state="readonly"); self.combo_filaments.pack(fill="x")
         self.update_filament_dropdown()
-        ttk.Label(f, text="Grams:").pack(anchor="w"); self.entry_calc_grams = ttk.Entry(f); self.entry_calc_grams.pack(fill="x")
+        ttk.Label(lf_job, text="Grams Used:").pack(anchor="w"); self.entry_calc_grams = ttk.Entry(lf_job); self.entry_calc_grams.pack(fill="x")
+        ttk.Button(lf_job, text="Add Material to List ->", command=self.add_to_job, style="Success.TButton").pack(fill="x", pady=5)
+
+        lf_cost = ttk.Labelframe(f_left, text="Time & Labor", padding=10)
+        lf_cost.pack(fill="x", pady=5)
         
-        r1 = ttk.Frame(f); r1.pack(fill="x", pady=5)
-        ttk.Label(r1, text="Time (h):").pack(side="left"); self.entry_hours = ttk.Entry(r1, width=5); self.entry_hours.pack(side="left", padx=5)
-        ttk.Label(r1, text="Rate ($/h):").pack(side="left"); self.entry_mach_rate = ttk.Entry(r1, width=5); self.entry_mach_rate.pack(side="left", padx=5)
+        r1 = ttk.Frame(lf_cost); r1.pack(fill="x", pady=2)
+        ttk.Label(r1, text="Time (h):").pack(side="left"); self.entry_hours = ttk.Entry(r1, width=6); self.entry_hours.pack(side="right")
+        
+        r2 = ttk.Frame(lf_cost); r2.pack(fill="x", pady=2)
+        ttk.Label(r2, text="Rate ($/h):").pack(side="left"); self.entry_mach_rate = ttk.Entry(r2, width=6); self.entry_mach_rate.pack(side="right")
+        
+        r3 = ttk.Frame(lf_cost); r3.pack(fill="x", pady=2)
+        ttk.Label(r3, text="Labor ($):").pack(side="left"); self.entry_processing = ttk.Entry(r3, width=6); self.entry_processing.pack(side="right")
+        
+        r4 = ttk.Frame(lf_cost); r4.pack(fill="x", pady=2)
+        ttk.Label(r4, text="Markup (x):").pack(side="left"); self.entry_markup = ttk.Entry(r4, width=6); self.entry_markup.pack(side="right")
+
         self.entry_hours.insert(0,"0")
         self.entry_mach_rate.insert(0, self.defaults.get('rate', "0.75"))
-        
-        r2 = ttk.Frame(f); r2.pack(fill="x", pady=5)
-        ttk.Label(r2, text="Labor ($):").pack(side="left"); self.entry_processing = ttk.Entry(r2, width=5); self.entry_processing.pack(side="left", padx=5)
-        ttk.Label(r2, text="Markup (x):").pack(side="left"); self.entry_markup = ttk.Entry(r2, width=5); self.entry_markup.pack(side="left", padx=5)
         self.entry_processing.insert(0, self.defaults.get('labor', "0"))
         self.entry_markup.insert(0, self.defaults.get('markup', "2.5"))
 
         self.var_round = tk.BooleanVar(); self.var_donate = tk.BooleanVar()
-        ttk.Checkbutton(f, text="Round to $", variable=self.var_round).pack(anchor="w")
-        ttk.Checkbutton(f, text="Donation", variable=self.var_donate).pack(anchor="w")
+        ttk.Checkbutton(f_left, text="Round to Nearest $", variable=self.var_round).pack(anchor="w")
+        ttk.Checkbutton(f_left, text="Donation (Tax Write-off)", variable=self.var_donate).pack(anchor="w")
         
-        ttk.Button(f, text="Calculate", style='Purple.TButton', command=self.calculate_quote).pack(pady=10)
-        self.lbl_breakdown = ttk.Label(f, text="...", font=("Consolas", 12)); self.lbl_breakdown.pack()
+        ttk.Button(f_left, text="CALCULATE QUOTE", style='Purple.TButton', command=self.calculate_quote).pack(fill="x", pady=15)
+
+        # -- OUTPUTS (Right) --
+        self.lbl_breakdown = ttk.Label(f_right, text="Quote Breakdown:\nAdd items and click Calculate...", font=("Consolas", 11), background="#f0f0f0", relief="sunken", padding=10, anchor="n")
+        self.lbl_breakdown.pack(fill="x", pady=(0, 10))
         
-        b_box = ttk.Frame(f); b_box.pack(fill="x", pady=10)
-        self.btn_receipt = ttk.Button(b_box, text="Receipt", state="disabled", command=self.generate_receipt); self.btn_receipt.pack(side="left", padx=5)
-        self.btn_queue = ttk.Button(b_box, text="Queue", state="disabled", command=self.save_to_queue); self.btn_queue.pack(side="left", padx=5)
-        self.btn_deduct = ttk.Button(b_box, text="Sell", state="disabled", command=self.deduct_inventory); self.btn_deduct.pack(side="left", padx=5)
-        self.btn_fail = ttk.Button(b_box, text="Fail", state="disabled", command=self.log_failure); self.btn_fail.pack(side="left", padx=5)
+        ttk.Label(f_right, text="Material List:", font=("Segoe UI", 9, "bold")).pack(anchor="w")
         
-        self.list_job = tk.Listbox(f)
+        # LISTBOX (Takes all remaining space)
+        self.list_job = tk.Listbox(f_right, font=("Segoe UI", 10), relief="flat", bg="#ffffff", borderwidth=1)
+        self.list_job.pack(fill="both", expand=True, pady=5)
+        
+        b_box = ttk.Frame(f_right); b_box.pack(fill="x", pady=10)
+        self.btn_receipt = ttk.Button(b_box, text="💾 Save Receipt", state="disabled", command=self.generate_receipt); self.btn_receipt.pack(side="left", fill="x", expand=True, padx=2)
+        self.btn_queue = ttk.Button(b_box, text="⏳ Queue Job", state="disabled", command=self.save_to_queue); self.btn_queue.pack(side="left", fill="x", expand=True, padx=2)
+        self.btn_deduct = ttk.Button(b_box, text="✅ Sell & Deduct", state="disabled", command=self.deduct_inventory); self.btn_deduct.pack(side="left", fill="x", expand=True, padx=2)
+        self.btn_fail = ttk.Button(b_box, text="⚠️ Log Failure", state="disabled", command=self.log_failure, style="Danger.TButton"); self.btn_fail.pack(side="left", fill="x", expand=True, padx=2)
 
     def calculate_quote(self):
         if not self.current_job_filaments: self.add_to_job()
