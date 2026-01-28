@@ -1,10 +1,10 @@
-# 3D Print Shop Manager 🚀 (v15.12)
+# 3D Print Shop Manager 🚀 (v15.15)
 
 **The "Smart" ERP for 3D Printing Businesses.**
 
 From simple inventory tracking to **AI-powered estimation** and **Live Printer Monitoring**, PrintShopManager is the all-in-one dashboard for the modern maker.
 
-> **v15.12 "The Golden Release"**: Features "Wife-Approved" Retail Pricing Logic, AI Diagnostics, and advanced Queue Management.
+> **v15.15 "The Wife-Approved Update"**: Features Smart Retail Pricing, Batch Calculations, AI Diagnostics, and Reference Image Zooming.
 
 ---
 
@@ -15,21 +15,20 @@ Stop scaring away customers with $50 quotes for small multi-color prints. The ca
 * **Volume Discount on Swaps:**
     * **< 100 Swaps:** Retail Rate ($0.15) for manual effort.
     * **> 100 Swaps:** Wholesale Rate ($0.03) for automated AMS labor.
-* **Tiered Markup:** Automatically lowers profit margin (1.5x) on high-automation jobs to keep prices competitive.
-* **Retail Rounding:** Calculates the **Unit Price** first, rounds it to the nearest dollar (e.g., $6.74 → $7.00), *then* calculates the Batch Total.
+* **Batch Pricing:** Calculates the total cost for a full plate, then divides by quantity to give you a precise **Unit Price**.
+* **Retail Rounding:** It calculates the Unit Price, rounds it to the nearest dollar (e.g., $6.74 → $7.00), *then* calculates the Batch Total. No more awkward "$6.75" price tags.
 
 ### 🤖 The AI Era (Google Gemini)
 * **Slicer Reader:** Drag & drop a screenshot of your slicer (Bambu/Orca). The AI extracts print time and gram usage automatically.
-* **Model Hunter:** New **Diagnostic Tool** in Settings detects which Gemini models are available to your API key (`gemini-1.5-flash`, `gemini-pro`, etc.) to prevent crashes.
+* **Model Hunter:** New **Diagnostic Tool** in Settings detects which Gemini models are available to your API key (`gemini-1.5-flash`, `gemini-pro`, etc.) to prevent "404 Not Found" crashes.
+
+### 🔍 Reference Library
+* **Zoom & Pan:** Click any reference chart (Filament specs, troubleshooting guides) to open it in a full-screen, scrollable viewer. No more squinting at 4K images!
+* **Expanded Materials:** Dropdowns now support ASA, Nylon, PC, HIPS, PVA, Wood, and Carbon Fiber.
 
 ### 📋 Queue Manager
 * **Edit Jobs:** Right-click any queued job to rename it or update dates.
-* **Reload to Calculator:** Send a queued job back to the Calculator tab with **all** settings (Time, Swaps, Fees, Markup) restored for adjustments.
-
-### 💾 Data & Operations
-* **Inventory Export:** Export your spool list to CSV for tax season.
-* **Live Dashboard:** View revenue trends and spool usage statistics.
-* **Bambu Lab Integration:** Connect via MQTT to see live nozzle/bed temps and status.
+* **Reload to Calculator:** Send a queued job back to the Calculator tab with **all** settings (Time, Swaps, Fees, Markup, Batch Qty) restored for adjustments.
 
 ---
 

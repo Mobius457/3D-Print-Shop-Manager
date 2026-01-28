@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 import tkinter as tk
-from tkinter import messagebox, filedialog, simpledialog, Menu, ttk
+from tkinter import messagebox, filedialog, simpledialog, Menu
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import json
@@ -58,7 +58,7 @@ except: pass
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v15.12 (AI Diagnostics Mode)"
+VERSION = "v15.15 (Reference Image Zoom)"
 
 # ======================================================
 # PATH & SYSTEM LOGIC
@@ -512,7 +512,9 @@ class FilamentManagerApp:
         ttk.Entry(f1, textvariable=self.v_id, width=8).pack(side="left", padx=5)
         ttk.Button(f1, text="Auto", style='Secondary.TButton', command=self.auto_gen_id).pack(side="left")
         ttk.Label(f1, text="Material:", background=self.CARD_BG).pack(side="left", padx=(10,0))
-        ttk.Combobox(f1, textvariable=self.v_mat, values=["PLA", "PETG", "ABS", "TPU"], width=8).pack(side="left", padx=5)
+        # --- V15.14: EXPANDED MATERIAL LIST ---
+        mat_options = ["PLA", "PETG", "ABS", "ASA", "TPU", "Nylon", "PC", "PVA", "HIPS", "Wood", "Carbon Fiber"]
+        ttk.Combobox(f1, textvariable=self.v_mat, values=mat_options, width=12).pack(side="left", padx=5)
         ttk.Label(f1, text="Color:", background=self.CARD_BG).pack(side="left", padx=(10,0))
         ttk.Entry(f1, textvariable=self.v_color, width=12).pack(side="left", padx=5)
         
@@ -890,13 +892,27 @@ class FilamentManagerApp:
         if not txt: return
         try:
             g = float(self.entry_calc_grams.get())
-            spool = next((s for s in self.inventory if s['name'] in txt), None)
+            
+            # --- NEW V15.13: Extract ID for precise matching ---
+            # Look for "[123]" at start of string
+            match = re.search(r"\[(\d+)\]", txt)
+            spool = None
+            if match:
+                spool_id = match.group(1)
+                # Find by ID
+                spool = next((s for s in self.inventory if str(s.get('id')) == spool_id), None)
+            else:
+                # Fallback to old name matching (risky but needed if format fails)
+                spool = next((s for s in self.inventory if s['name'] in txt), None)
+
             if spool:
                 cost = (spool['cost'] / 1000) * g
                 self.current_job_filaments.append({'spool': spool, 'cost': cost, 'grams': g})
-                self.list_job.insert(tk.END, f"{spool['name']}: {g}g (${cost:.2f})")
+                # Show material in listbox too
+                display_name = f"{spool['name']} ({spool.get('material','?')})"
+                self.list_job.insert(tk.END, f"{display_name}: {g}g (${cost:.2f})")
                 self.entry_calc_grams.delete(0, tk.END)
-                self.combo_filaments.set('') # Clear dropdown to signal success
+                self.combo_filaments.set('') 
         except: pass
 
     def clear_job(self):
@@ -1200,7 +1216,7 @@ class FilamentManagerApp:
         json.dump(d, open(CONFIG_FILE, 'w'))
 
     def update_filament_dropdown(self):
-        self.full_filament_list = [f"{i['name']} - {i.get('color','')}" for i in self.inventory]
+        self.full_filament_list = [f"[{i.get('id','?')}] {i['name']} - {i.get('material','?')} - {i.get('color','')}" for i in self.inventory]
         self.combo_filaments['values'] = self.full_filament_list
 
     def load_printer_config(self): 
@@ -1334,12 +1350,48 @@ class FilamentManagerApp:
                 title = os.path.splitext(os.path.basename(img_path))[0].replace("ref_", "")
                 self.gallery_notebook.add(tab_frame, text=f" 📷 {title} ")
                 
+                # --- NEW IN V15.15: CLICK TO ZOOM ---
                 pil = Image.open(img_path)
                 pil.thumbnail((1000, 600))
                 tk_img = ImageTk.PhotoImage(pil)
-                self.ref_images_cache.append(tk_img) # Keep ref
-                ttk.Label(tab_frame, image=tk_img).pack(expand=True)
+                self.ref_images_cache.append(tk_img) 
+                
+                lbl = ttk.Label(tab_frame, image=tk_img, cursor="hand2") # Hand cursor
+                lbl.pack(expand=True)
+                
+                # Bind click event
+                lbl.bind("<Button-1>", lambda e, p=img_path: self.view_full_image(p))
+                
+                ttk.Label(tab_frame, text="(Click image to zoom)", font=("Segoe UI", 8), foreground="gray").pack(pady=5)
+
             except: pass
+
+    # --- NEW HELPER FOR ZOOM ---
+    def view_full_image(self, img_path):
+        top = tk.Toplevel(self.root)
+        top.title(f"Zoom: {os.path.basename(img_path)}")
+        top.state('zoomed') # Maximize window
+
+        # Scrollable Canvas
+        canvas = tk.Canvas(top, bg="black")
+        v_scroll = ttk.Scrollbar(top, orient="vertical", command=canvas.yview)
+        h_scroll = ttk.Scrollbar(top, orient="horizontal", command=canvas.xview)
+        
+        canvas.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        
+        v_scroll.pack(side="right", fill="y")
+        h_scroll.pack(side="bottom", fill="x")
+        canvas.pack(side="left", fill="both", expand=True)
+        
+        # Load Full Res
+        pil = Image.open(img_path)
+        tk_full = ImageTk.PhotoImage(pil)
+        
+        # Keep reference so it doesn't garbage collect
+        canvas.image = tk_full 
+        
+        canvas.create_image(0, 0, image=tk_full, anchor="nw")
+        canvas.config(scrollregion=canvas.bbox("all"))
 
     def scan_for_custom_profiles(self):
         custom_rows = []
