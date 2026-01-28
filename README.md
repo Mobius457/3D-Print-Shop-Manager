@@ -1,27 +1,35 @@
-# 3D Print Shop Manager 🚀 (v15.0)
+# 3D Print Shop Manager 🚀 (v15.12)
 
 **The "Smart" ERP for 3D Printing Businesses.**
 
 From simple inventory tracking to **AI-powered estimation** and **Live Printer Monitoring**, PrintShopManager is the all-in-one dashboard for the modern maker.
 
+> **v15.12 "The Golden Release"**: Features "Wife-Approved" Retail Pricing Logic, AI Diagnostics, and advanced Queue Management.
+
 ---
 
-## ✨ What's New in v15?
-### 🤖 The AI Era
-* **AI Slicer Reader:** Drag & drop a screenshot of your slicer (Bambu/Orca/Cura). The built-in Google Gemini AI extracts print time and gram usage automatically. No more manual data entry!
-* **Price Estimator:** Ask the AI to estimate fair market value for specific filament brands/types.
+## ✨ Key Features
 
-### 📡 Live Operations
-* **Bambu Lab Integration:** Connect directly to your X1/P1/A1 printers via MQTT.
-* **Real-Time Dashboard:** See nozzle temps, bed temps, and print progress % directly in your shop dashboard.
+### 🧠 Smart Pricing Engine ("Huntsville Logic")
+Stop scaring away customers with $50 quotes for small multi-color prints. The calculator now uses **Dynamic Complexity Logic**:
+* **Volume Discount on Swaps:**
+    * **< 100 Swaps:** Retail Rate ($0.15) for manual effort.
+    * **> 100 Swaps:** Wholesale Rate ($0.03) for automated AMS labor.
+* **Tiered Markup:** Automatically lowers profit margin (1.5x) on high-automation jobs to keep prices competitive.
+* **Retail Rounding:** Calculates the **Unit Price** first, rounds it to the nearest dollar (e.g., $6.74 → $7.00), *then* calculates the Batch Total.
 
-### 🖥️ Modern UI Overhaul
-* **Sidebar Navigation:** We ditched the cluttered tabs for a clean, professional sidebar layout.
-* **Dark/Light Mode:** Instant theme toggling with persistent preferences.
+### 🤖 The AI Era (Google Gemini)
+* **Slicer Reader:** Drag & drop a screenshot of your slicer (Bambu/Orca). The AI extracts print time and gram usage automatically.
+* **Model Hunter:** New **Diagnostic Tool** in Settings detects which Gemini models are available to your API key (`gemini-1.5-flash`, `gemini-pro`, etc.) to prevent crashes.
 
-### 📚 The Knowledge Base
-* **Dynamic Reference Gallery:** Auto-loads reference images (`ref_*.png`) into tabs.
-* **Filament Wiki:** Built-in cheat sheets for Temp, Fan Speed, and Plate Prep for all major materials (PLA, PETG, ABS, TPU, Nylon, CF).
+### 📋 Queue Manager
+* **Edit Jobs:** Right-click any queued job to rename it or update dates.
+* **Reload to Calculator:** Send a queued job back to the Calculator tab with **all** settings (Time, Swaps, Fees, Markup) restored for adjustments.
+
+### 💾 Data & Operations
+* **Inventory Export:** Export your spool list to CSV for tax season.
+* **Live Dashboard:** View revenue trends and spool usage statistics.
+* **Bambu Lab Integration:** Connect via MQTT to see live nozzle/bed temps and status.
 
 ---
 
@@ -36,10 +44,11 @@ From simple inventory tracking to **AI-powered estimation** and **Live Printer M
     ```bash
     git clone [https://github.com/Mobius457/3D-Print-Shop-Manager.git](https://github.com/Mobius457/3D-Print-Shop-Manager.git)
     ```
-2.  Install dependencies:
+2.  Install dependencies (Critical for AI features):
     ```bash
     pip install ttkbootstrap pillow paho-mqtt google-generativeai matplotlib
     ```
+    *Note: If you get AI errors, run `pip install --upgrade google-generativeai`*
 3.  Run:
     ```bash
     python print_manager.py
@@ -48,22 +57,19 @@ From simple inventory tracking to **AI-powered estimation** and **Live Printer M
 ---
 
 ## 🔐 Configuration & Privacy
+
 **⚠️ IMPORTANT:** This app stores data in local JSON files.
-* **Cloud Sync:** To sync between computers, set your Data Folder to OneDrive/Dropbox via *Settings -> Configure Printer/Paths*.
-* **Privacy:** We use a strict `.gitignore`. Your `filament_inventory.json`, `sales_history.json`, and API Keys (`config.json`) are **NEVER** uploaded to GitHub.
+* **Cloud Sync:** To sync between computers, set your Data Folder to OneDrive/Dropbox via *Settings*.
+* **Privacy:** Your `filament_inventory.json`, `sales_history.json`, and API Keys (`config.json`) are **NEVER** uploaded to GitHub.
+
+### 🤖 Setting up AI Features (Free)
+1.  Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
+2.  Create a free API Key.
+3.  Open **PrintShopManager** -> **Settings**.
+4.  Paste your key.
+5.  Click **"🔍 Test AI & List Models"** to auto-configure the best model for your computer.
 
 ---
-
-## 🤖 Setting up AI Features (Free)
-To use the **Slicer Screenshot Reader** or **Price Estimator**, you need a free Google Gemini API Key.
-
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Click **"Create API Key"**.
-3. Copy the key string (starts with `AIza...`).
-4. Open **PrintShopManager** -> **Settings** (or try to use an AI feature).
-5. Paste your key when prompted.
-
-
 
 ## ⚖️ License
 MIT License - Free for personal and commercial use.
