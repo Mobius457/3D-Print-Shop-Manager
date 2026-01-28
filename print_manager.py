@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 import tkinter as tk
-from tkinter import messagebox, filedialog, simpledialog, Menu
+from tkinter import messagebox, filedialog, simpledialog, Menu, ttk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import json
@@ -25,7 +25,8 @@ import threading
 import time
 import uuid
 import ssl
-import csv  # <--- Added for Export Feature
+import csv
+import math 
 
 # --- OPTIONAL DEPENDENCIES ---
 try:
@@ -57,7 +58,7 @@ except: pass
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v15.1 (Smart Shop + Export)"
+VERSION = "v15.12 (AI Diagnostics Mode)"
 
 # ======================================================
 # PATH & SYSTEM LOGIC
@@ -130,43 +131,70 @@ class ColorManager:
         return tk_img
 
 # ======================================================
-# AI MANAGER
+# AI MANAGER (ROBUST DIAGNOSTIC VERSION)
 # ======================================================
 class AIManager:
     def __init__(self):
-        self.api_key = self.load_api_key()
+        self.config = self.load_config()
+        self.api_key = self.config.get('gemini_api_key', '')
+        self.preferred_model = self.config.get('gemini_model', 'gemini-1.5-flash')
         self.model = None
+        
         if HAS_GENAI and self.api_key:
             try:
                 genai.configure(api_key=self.api_key)
-                self.model = genai.GenerativeModel('gemini-1.5-flash')
+                self.setup_model(self.preferred_model)
             except: pass
 
-    def load_api_key(self):
+    def setup_model(self, model_name):
+        try:
+            self.model = genai.GenerativeModel(model_name)
+            self.preferred_model = model_name
+            return True
+        except:
+            return False
+
+    def list_available_models(self):
+        if not HAS_GENAI or not self.api_key: return ["Error: Library Missing or Key Empty"]
+        try:
+            genai.configure(api_key=self.api_key)
+            models = []
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    models.append(m.name)
+            return models
+        except Exception as e:
+            return [f"Error: {str(e)}"]
+
+    def load_config(self):
         if os.path.exists(CONFIG_FILE):
-            try: return json.load(open(CONFIG_FILE)).get('gemini_api_key', '')
+            try: return json.load(open(CONFIG_FILE))
             except: pass
-        return ''
+        return {}
 
-    def save_api_key(self, key):
+    def save_config(self, key, model):
         self.api_key = key
-        d = {}
-        if os.path.exists(CONFIG_FILE): d = json.load(open(CONFIG_FILE))
+        self.preferred_model = model
+        d = self.load_config()
         d['gemini_api_key'] = key
+        d['gemini_model'] = model
         json.dump(d, open(CONFIG_FILE,'w'))
-        if HAS_GENAI: genai.configure(api_key=key); self.model = genai.GenerativeModel('gemini-1.5-flash')
+        if HAS_GENAI: 
+            genai.configure(api_key=key)
+            self.setup_model(model)
 
     def analyze_slicer_screenshot(self, image_path):
-        if not self.model: return {'error': "AI Model not loaded. Check API Key."}
+        if not self.model: return {'error': "AI Model not loaded. Go to Settings -> Test AI."}
         try:
             img = Image.open(image_path)
             prompt = """Analyze this 3D printer slicer screenshot. Extract the print time, filament usage (grams), and estimated cost.
             Return ONLY a JSON object with these keys: {"hours": float, "minutes": float, "grams": float, "cost": float}.
             Example: {"hours": 1, "minutes": 30, "grams": 50.5, "cost": 1.25}. Do not include markdown."""
+            
             response = self.model.generate_content([prompt, img])
             txt = response.text.replace('```json', '').replace('```', '').strip()
             return json.loads(txt)
-        except Exception as e: return {'error': str(e)}
+        except Exception as e: return {'error': f"Model {self.preferred_model} Error: {str(e)}"}
 
     def estimate_price(self, brand, material, color):
         if not self.model: return None
@@ -260,7 +288,7 @@ class FilamentManagerApp:
         if not self.maintenance: self.init_default_maintenance()
             
         self.current_job_filaments = []
-        self.calc_vals = {"mat_cost": 0, "electricity": 0, "labor": 0, "subtotal": 0, "total": 0, "profit": 0, "hours": 0, "rate": 0}
+        self.calc_vals = {"mat_cost": 0, "electricity": 0, "labor": 0, "swaps": 0, "subtotal": 0, "total": 0, "profit": 0, "hours": 0, "rate": 0, "batch": 1, "unit_price": 0}
 
         # --- LAYOUT ---
         self.main_container = ttk.Frame(root)
@@ -293,6 +321,15 @@ class FilamentManagerApp:
         if self.printer_cfg.get("enabled"): self.start_printer_listener()
             
         self.show_dashboard()
+
+        # --- NEW USER WELCOME ---
+        if not self.inventory and not self.history:
+            self.root.after(500, lambda: messagebox.showinfo("Welcome!", 
+                "Welcome to Print Shop Manager!\n\n"
+                "It looks like this is your first time here.\n"
+                "1. Go to 'Inventory' to add your first spool.\n"
+                "2. Check 'Settings' if you want to set up AI or Printers.\n\n"
+                "Happy Printing!"))
 
     def configure_styles(self):
         self.style.configure("Treeview", rowheight=30, font=("Segoe UI", 9))
@@ -376,7 +413,7 @@ class FilamentManagerApp:
         grid = ttk.Frame(self.content_area); grid.pack(fill="x")
         grid.columnconfigure(0, weight=1); grid.columnconfigure(1, weight=1); grid.columnconfigure(2, weight=1); grid.columnconfigure(3, weight=1)
 
-        # Create Cards (Init with 0/loading)
+        # Create Cards
         c1, self.lbl_stat_proj, self.lbl_sub_proj = self.create_stat_card(grid, "Total Projects", "...", "...", "📦")
         c1.grid(row=0, column=0, sticky="ew", padx=10)
 
@@ -389,12 +426,15 @@ class FilamentManagerApp:
         c4, self.lbl_stat_low, self.lbl_sub_low = self.create_stat_card(grid, "Low Stock", "...", "...", "⚠️")
         c4.grid(row=0, column=3, sticky="ew", padx=10)
 
-        # Graph
         if HAS_MATPLOTLIB:
             chart_wrapper = ttk.Frame(self.content_area)
             chart_wrapper.pack(fill="both", expand=True, pady=20)
-            chart_frame = self.create_card(chart_wrapper, "Revenue Trend (Last 7 Days)", row=0, col=0)
+            
+            # Configure grid to expand
             chart_wrapper.columnconfigure(0, weight=1) 
+            chart_wrapper.rowconfigure(0, weight=1) 
+            
+            chart_frame = self.create_card(chart_wrapper, "Revenue Trend (Last 7 Days)", row=0, col=0)
             self.draw_dashboard_chart(chart_frame)
 
         self.refresh_dashboard_data()
@@ -434,24 +474,20 @@ class FilamentManagerApp:
         self.refresh_dashboard_data()
 
     def refresh_dashboard_data(self):
-        # 1. Projects
         total_p = len(self.history)
         active_p = len(self.queue)
         self.lbl_stat_proj.config(text=str(total_p))
         self.lbl_sub_proj.config(text=f"{active_p} active in queue")
 
-        # 2. Avg Cost
         costs = [float(h.get('cost', 0)) for h in self.history]
         avg_cost = sum(costs) / len(costs) if costs else 0
         self.lbl_stat_cost.config(text=f"${avg_cost:.2f}")
         self.lbl_sub_cost.config(text="Per finished project")
 
-        # 3. Inventory
         total_g = sum(int(i.get('weight', 0)) for i in self.inventory)
         self.lbl_stat_inv.config(text=f"{total_g/1000:.1f} kg")
         self.lbl_sub_inv.config(text="Total filament remaining")
 
-        # 4. Low Stock
         low_count = sum(1 for i in self.inventory if int(i.get('weight',0)) < 200)
         self.lbl_stat_low.config(text=str(low_count))
         self.lbl_sub_low.config(text="Spools < 200g")
@@ -632,8 +668,8 @@ class FilamentManagerApp:
     def configure_ai(self):
         key = simpledialog.askstring("Google AI Studio", "Enter Gemini API Key:\n(Get one from aistudio.google.com)", initialvalue=self.ai_manager.api_key)
         if key:
-            self.ai_manager.save_api_key(key)
-            messagebox.showinfo("Success", "API Key Saved.")
+            self.ai_manager.save_api_key(key, "gemini-1.5-flash") # Default
+            messagebox.showinfo("Success", "API Key Saved. Go to Settings -> Test AI to verify.")
 
     # --- AI SLICER READER ---
     def show_ai_reader(self):
@@ -643,6 +679,7 @@ class FilamentManagerApp:
         icon_lbl = ttk.Label(container, text="⛶", font=("Segoe UI", 30), foreground=self.PURPLE_MAIN, background=self.BG_COLOR)
         icon_lbl.pack()
         ttk.Label(container, text="AI Slicer Reader", font=("Segoe UI", 24, "bold"), foreground=self.PURPLE_MAIN).pack(pady=(0,10))
+        ttk.Label(container, text=f"Model: {self.ai_manager.preferred_model}", font=("Segoe UI", 10), foreground="gray").pack(pady=0)
         ttk.Label(container, text="Upload a screenshot from your slicer to extract data.", font=("Segoe UI", 11), foreground="gray").pack(pady=5)
         card = ttk.Frame(container, style='Card.TFrame', padding=40)
         card.pack(ipadx=20)
@@ -678,61 +715,171 @@ class FilamentManagerApp:
             self.entry_hours.insert(0, f"{total_h:.2f}")
         messagebox.showinfo("Success", "Slicer data extracted!")
 
-    # --- CALCULATOR ---
+    # --- CALCULATOR (UPDATED FOR FULL SCREEN & MULTI-MATERIAL) ---
     def show_calculator(self):
         self.current_page_method = self.show_calculator
         self.clear_content()
         ttk.Label(self.content_area, text="Calculator", font=("Segoe UI", 20, "bold")).pack(pady=10)
-        self.tab_calc = ttk.Frame(self.content_area); self.tab_calc.pack(fill="both", expand=True)
         
-        f = ttk.Frame(self.tab_calc); f.pack(fill="both", expand=True, padx=20)
-        ttk.Label(f, text="Job Name:").pack(anchor="w"); self.entry_job_name = ttk.Entry(f); self.entry_job_name.pack(fill="x")
-        ttk.Label(f, text="Spool:").pack(anchor="w"); self.combo_filaments = ttk.Combobox(f, state="readonly"); self.combo_filaments.pack(fill="x")
+        # --- SPLIT LAYOUT ---
+        paned = ttk.Panedwindow(self.content_area, orient=tk.HORIZONTAL)
+        paned.pack(fill="both", expand=True)
+        
+        # LEFT PANE: Inputs
+        f_left = ttk.Frame(paned, padding=10)
+        paned.add(f_left, weight=1)
+        
+        # RIGHT PANE: Output/List
+        f_right = ttk.Frame(paned, padding=10)
+        paned.add(f_right, weight=2)
+        
+        # -- INPUTS (Left) --
+        lf_job = ttk.Labelframe(f_left, text="Job Details (Builder)", padding=10)
+        lf_job.pack(fill="x", pady=5)
+        ttk.Label(lf_job, text="Job Name:").pack(anchor="w"); self.entry_job_name = ttk.Entry(lf_job); self.entry_job_name.pack(fill="x")
+        ttk.Label(lf_job, text="Select Spool (Layer/Color):").pack(anchor="w"); self.combo_filaments = ttk.Combobox(lf_job, state="readonly"); self.combo_filaments.pack(fill="x")
         self.update_filament_dropdown()
-        ttk.Label(f, text="Grams:").pack(anchor="w"); self.entry_calc_grams = ttk.Entry(f); self.entry_calc_grams.pack(fill="x")
+        ttk.Label(lf_job, text="Grams for this Spool:").pack(anchor="w"); self.entry_calc_grams = ttk.Entry(lf_job); self.entry_calc_grams.pack(fill="x")
         
-        r1 = ttk.Frame(f); r1.pack(fill="x", pady=5)
-        ttk.Label(r1, text="Time (h):").pack(side="left"); self.entry_hours = ttk.Entry(r1, width=5); self.entry_hours.pack(side="left", padx=5)
-        ttk.Label(r1, text="Rate ($/h):").pack(side="left"); self.entry_mach_rate = ttk.Entry(r1, width=5); self.entry_mach_rate.pack(side="left", padx=5)
+        # Explicit ADD button
+        ttk.Button(lf_job, text="➕ Add Segment to List", command=self.add_to_job, style="Success.TButton").pack(fill="x", pady=5)
+
+        lf_cost = ttk.Labelframe(f_left, text="Time & Labor", padding=10)
+        lf_cost.pack(fill="x", pady=5)
+        
+        r1 = ttk.Frame(lf_cost); r1.pack(fill="x", pady=2)
+        ttk.Label(r1, text="Time (h):").pack(side="left"); self.entry_hours = ttk.Entry(r1, width=6); self.entry_hours.pack(side="right")
+        
+        r2 = ttk.Frame(lf_cost); r2.pack(fill="x", pady=2)
+        ttk.Label(r2, text="Rate ($/h):").pack(side="left"); self.entry_mach_rate = ttk.Entry(r2, width=6); self.entry_mach_rate.pack(side="right")
+        
+        r3 = ttk.Frame(lf_cost); r3.pack(fill="x", pady=2)
+        ttk.Label(r3, text="Labor ($):").pack(side="left"); self.entry_processing = ttk.Entry(r3, width=6); self.entry_processing.pack(side="right")
+        
+        r4 = ttk.Frame(lf_cost); r4.pack(fill="x", pady=2)
+        ttk.Label(r4, text="Markup (x):").pack(side="left"); self.entry_markup = ttk.Entry(r4, width=6); self.entry_markup.pack(side="right")
+
+        # --- NEW SWAP ROWS ---
+        r5 = ttk.Frame(lf_cost); r5.pack(fill="x", pady=2)
+        ttk.Label(r5, text="Swaps (#):").pack(side="left"); self.entry_swaps = ttk.Entry(r5, width=6); self.entry_swaps.pack(side="right")
+        
+        r6 = ttk.Frame(lf_cost); r6.pack(fill="x", pady=2)
+        ttk.Label(r6, text="Swap Fee ($):").pack(side="left"); self.entry_swap_fee = ttk.Entry(r6, width=6); self.entry_swap_fee.pack(side="right")
+
+        # --- BATCH QTY ---
+        r7 = ttk.Frame(lf_cost); r7.pack(fill="x", pady=2)
+        ttk.Label(r7, text="Batch Qty:").pack(side="left"); self.entry_batch_qty = ttk.Entry(r7, width=6); self.entry_batch_qty.pack(side="right")
+
         self.entry_hours.insert(0,"0")
-        self.entry_mach_rate.insert(0, self.defaults.get('rate', "0.75"))
-        
-        r2 = ttk.Frame(f); r2.pack(fill="x", pady=5)
-        ttk.Label(r2, text="Labor ($):").pack(side="left"); self.entry_processing = ttk.Entry(r2, width=5); self.entry_processing.pack(side="left", padx=5)
-        ttk.Label(r2, text="Markup (x):").pack(side="left"); self.entry_markup = ttk.Entry(r2, width=5); self.entry_markup.pack(side="left", padx=5)
+        self.entry_mach_rate.insert(0, self.defaults.get('rate', "0.05")) # Default Huntsville Rate
         self.entry_processing.insert(0, self.defaults.get('labor', "0"))
         self.entry_markup.insert(0, self.defaults.get('markup', "2.5"))
+        self.entry_swaps.insert(0, "0")
+        self.entry_swap_fee.insert(0, self.defaults.get('swap_fee', "0.15")) 
+        self.entry_batch_qty.insert(0, "1")
 
         self.var_round = tk.BooleanVar(); self.var_donate = tk.BooleanVar()
-        ttk.Checkbutton(f, text="Round to $", variable=self.var_round).pack(anchor="w")
-        ttk.Checkbutton(f, text="Donation", variable=self.var_donate).pack(anchor="w")
+        ttk.Checkbutton(f_left, text="Round to Nearest $", variable=self.var_round).pack(anchor="w")
+        ttk.Checkbutton(f_left, text="Donation (Tax Write-off)", variable=self.var_donate).pack(anchor="w")
         
-        ttk.Button(f, text="Calculate", style='Purple.TButton', command=self.calculate_quote).pack(pady=10)
-        self.lbl_breakdown = ttk.Label(f, text="...", font=("Consolas", 12)); self.lbl_breakdown.pack()
+        ttk.Button(f_left, text="CALCULATE TOTAL QUOTE", style='Purple.TButton', command=self.calculate_quote).pack(fill="x", pady=15)
+
+        # -- OUTPUTS (Right) --
+        self.lbl_breakdown = ttk.Label(f_right, text="Quote Breakdown:\nAdd items and click Calculate...", font=("Consolas", 11), background="#f0f0f0", relief="sunken", padding=10, anchor="n")
+        self.lbl_breakdown.pack(fill="x", pady=(0, 10))
         
-        b_box = ttk.Frame(f); b_box.pack(fill="x", pady=10)
-        self.btn_receipt = ttk.Button(b_box, text="Receipt", state="disabled", command=self.generate_receipt); self.btn_receipt.pack(side="left", padx=5)
-        self.btn_queue = ttk.Button(b_box, text="Queue", state="disabled", command=self.save_to_queue); self.btn_queue.pack(side="left", padx=5)
-        self.btn_deduct = ttk.Button(b_box, text="Sell", state="disabled", command=self.deduct_inventory); self.btn_deduct.pack(side="left", padx=5)
-        self.btn_fail = ttk.Button(b_box, text="Fail", state="disabled", command=self.log_failure); self.btn_fail.pack(side="left", padx=5)
+        list_head = ttk.Frame(f_right)
+        list_head.pack(fill="x")
+        ttk.Label(list_head, text="Job Material List:", font=("Segoe UI", 9, "bold")).pack(side="left")
+        ttk.Button(list_head, text="🗑️ Clear List", style="Link.TButton", command=self.clear_job).pack(side="right")
         
-        self.list_job = tk.Listbox(f)
+        # LISTBOX (Takes all remaining space)
+        self.list_job = tk.Listbox(f_right, font=("Segoe UI", 10), relief="flat", bg="#ffffff", borderwidth=1)
+        self.list_job.pack(fill="both", expand=True, pady=5)
+        
+        b_box = ttk.Frame(f_right); b_box.pack(fill="x", pady=10)
+        self.btn_receipt = ttk.Button(b_box, text="💾 Save Receipt", state="disabled", command=self.generate_receipt); self.btn_receipt.pack(side="left", fill="x", expand=True, padx=2)
+        self.btn_queue = ttk.Button(b_box, text="⏳ Queue Job", state="disabled", command=self.save_to_queue); self.btn_queue.pack(side="left", fill="x", expand=True, padx=2)
+        self.btn_deduct = ttk.Button(b_box, text="✅ Sell & Deduct", state="disabled", command=self.deduct_inventory); self.btn_deduct.pack(side="left", fill="x", expand=True, padx=2)
+        self.btn_fail = ttk.Button(b_box, text="⚠️ Log Failure", state="disabled", command=self.log_failure, style="Danger.TButton"); self.btn_fail.pack(side="left", fill="x", expand=True, padx=2)
 
     def calculate_quote(self):
-        if not self.current_job_filaments: self.add_to_job()
+        # Auto-add if user forgot to click "Add"
+        if self.combo_filaments.get() and self.entry_calc_grams.get():
+            self.add_to_job()
+
         try:
-            hours = float(self.entry_hours.get() or 0); rate = float(self.entry_mach_rate.get() or 0.75); labor = float(self.entry_processing.get() or 0); markup = float(self.entry_markup.get() or 1)
+            # 1. Inputs
+            hours = float(self.entry_hours.get() or 0)
+            rate = float(self.entry_mach_rate.get()) 
+            labor = float(self.entry_processing.get() or 0)
+            batch = int(self.entry_batch_qty.get() or 1) # Batch Quantity
+            if batch < 1: batch = 1
+            
+            # 2. Swap Logic
+            swaps = int(self.entry_swaps.get() or 0)
+            
+            # Dynamic Swap Fee Logic
+            if swaps > 100:
+                effective_swap_fee = 0.03
+            else:
+                effective_swap_fee = 0.15 
+            
+            # Update UI for transparency
+            self.entry_swap_fee.delete(0, tk.END)
+            self.entry_swap_fee.insert(0, str(effective_swap_fee))
+            
+            swap_cost = swaps * effective_swap_fee
+
+            # 3. Markup Logic
+            # Tiered Markup
+            if swaps > 100:
+                effective_markup = 1.5
+            else:
+                effective_markup = 2.5
+            
+            # Update UI for transparency
+            self.entry_markup.delete(0, tk.END)
+            self.entry_markup.insert(0, str(effective_markup))
+
             self.save_sticky_settings()
             
             raw_mat_cost = sum(x['cost'] for x in self.current_job_filaments)
-            elec_cost = hours * rate; base_cost = raw_mat_cost + elec_cost + labor
-            final_price = base_cost * markup
-            if self.var_round.get(): final_price = round(final_price)
-            display_price = final_price
-            if self.var_donate.get(): display_price = 0.00
+            elec_cost = hours * rate
+            base_cost = raw_mat_cost + elec_cost + labor + swap_cost
+            
+            final_price = base_cost * effective_markup
+            if self.var_donate.get(): final_price = 0.00
+            profit = display_price = 0
+            
+            # --- NEW ROUNDING LOGIC (Unit Based) ---
+            raw_unit_price = final_price / batch
+            
+            if self.var_round.get():
+                # Round unit price to nearest whole dollar
+                unit_price = round(raw_unit_price)
+                if unit_price == 0 and raw_unit_price > 0: unit_price = 1 # Minimum $1
+                display_price = unit_price * batch # Re-calculate Total based on rounded unit
+            else:
+                unit_price = raw_unit_price
+                display_price = final_price
+
             profit = display_price - base_cost
-            self.calc_vals = {"mat_cost": raw_mat_cost, "electricity": elec_cost, "labor": labor, "subtotal": base_cost, "total": display_price, "profit": profit, "hours": hours, "rate": rate}
-            txt = (f"--- QUOTE BREAKDOWN ---\nMaterials:   ${raw_mat_cost:.2f}\nElectricity: ${elec_cost:.2f} ({hours}h @ ${rate}/h)\nLabor:       ${labor:.2f}\n-----------------------\nBASE COST:   ${base_cost:.2f}\nMARKUP:      x{markup}\n=======================\nTOTAL:       ${display_price:.2f}")
+            
+            self.calc_vals = {"mat_cost": raw_mat_cost, "electricity": elec_cost, "labor": labor, "swaps_cost": swap_cost, "subtotal": base_cost, "total": display_price, "profit": profit, "hours": hours, "rate": rate, "swaps": swaps, "batch": batch, "unit_price": unit_price}
+            
+            txt = (f"--- QUOTE BREAKDOWN ---\n"
+                   f"Materials:   ${raw_mat_cost:.2f}\n"
+                   f"Electricity: ${elec_cost:.2f} ({hours}h @ ${rate}/h)\n"
+                   f"Labor:       ${labor:.2f}\n"
+                   f"AMS Fees:    ${swap_cost:.2f} ({swaps} swaps)\n"
+                   f"-----------------------\n"
+                   f"BASE COST:   ${base_cost:.2f}\n"
+                   f"MARKUP:      x{effective_markup}\n"
+                   f"=======================\n"
+                   f"TOTAL JOB:   ${display_price:.2f}\n"
+                   f"UNIT PRICE:  ${unit_price:.2f}  (Qty: {batch})")
+            
             if self.var_donate.get(): txt += " (DONATION)"
             self.lbl_breakdown.config(text=txt)
             for b in [self.btn_receipt, self.btn_queue, self.btn_deduct, self.btn_fail]: b.config(state="normal")
@@ -749,6 +896,7 @@ class FilamentManagerApp:
                 self.current_job_filaments.append({'spool': spool, 'cost': cost, 'grams': g})
                 self.list_job.insert(tk.END, f"{spool['name']}: {g}g (${cost:.2f})")
                 self.entry_calc_grams.delete(0, tk.END)
+                self.combo_filaments.set('') # Clear dropdown to signal success
         except: pass
 
     def clear_job(self):
@@ -762,9 +910,24 @@ class FilamentManagerApp:
         fpath = os.path.join(DOCS_DIR, fname)
         vals = self.calc_vals; is_don = self.var_donate.get()
         header = "DONATION RECEIPT (TAX EXEMPT)" if is_don else "INVOICE"
-        lines = ["="*50, f"{header:^50}", "="*50, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}", f"Job Name: {self.entry_job_name.get() or 'Custom Job'}", "-"*50, "COST BREAKDOWN:", f" > Materials:       ${vals['mat_cost']:.2f}", f" > Machine/Power:   ${vals['electricity']:.2f} ({vals['hours']}h @ ${vals['rate']}/h)", f" > Labor/Prep:      ${vals['labor']:.2f}", "-"*50, f"SUBTOTAL COST:      ${vals['subtotal']:.2f}", f"MARKUP:              x{self.entry_markup.get()}", "="*50]
+        lines = [
+            "="*50, f"{header:^50}", "="*50, 
+            f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}", 
+            f"Job Name: {self.entry_job_name.get() or 'Custom Job'}", "-"*50, 
+            "COST BREAKDOWN:", 
+            f" > Materials:       ${vals['mat_cost']:.2f}", 
+            f" > Machine/Power:   ${vals['electricity']:.2f} ({vals['hours']}h @ ${vals['rate']}/h)", 
+            f" > Labor/Prep:      ${vals['labor']:.2f}",
+            f" > AMS/Swaps:       ${vals['swaps_cost']:.2f} ({vals['swaps']} changes)",
+            "-"*50, 
+            f"SUBTOTAL COST:      ${vals['subtotal']:.2f}", 
+            f"MARKUP:              x{self.entry_markup.get()}", "="*50
+        ]
         if is_don: lines.append(f"TOTAL DUE:          $0.00"); lines.append(f"TAX DEDUCTIBLE VAL: ${vals['total']:.2f}")
-        else: lines.append(f"TOTAL DUE:          ${vals['total']:.2f}")
+        else: 
+            lines.append(f"TOTAL BATCH PRICE:  ${vals['total']:.2f}")
+            lines.append(f"UNIT PRICE:         ${vals['unit_price']:.2f} (Qty: {vals['batch']})")
+            
         lines.append("="*50); lines.append("\nThank you for your business!")
         try:
             with open(fpath, 'w') as f: f.write("\n".join(lines))
@@ -772,10 +935,28 @@ class FilamentManagerApp:
         except Exception as e: messagebox.showerror("Error", f"Failed to save receipt: {e}")
 
     def save_to_queue(self):
-        job = {"job": self.entry_job_name.get(), "date_added": datetime.now().strftime("%Y-%m-%d"), "items": self.current_job_filaments}
+        # --- NEW IN V15.9: SAVE CALCULATOR PARAMS ---
+        # Capture calculator state to restore later
+        params = {
+            "hours": self.entry_hours.get(),
+            "rate": self.entry_mach_rate.get(),
+            "labor": self.entry_processing.get(),
+            "markup": self.entry_markup.get(),
+            "swaps": self.entry_swaps.get(),
+            "swap_fee": self.entry_swap_fee.get(),
+            "batch": self.entry_batch_qty.get()
+        }
+        
+        job = {
+            "job": self.entry_job_name.get(), 
+            "date_added": datetime.now().strftime("%Y-%m-%d"), 
+            "items": self.current_job_filaments,
+            "params": params # Save the context
+        }
         self.queue.append(job)
         self.save_json(self.queue, QUEUE_FILE)
         self.clear_job()
+        messagebox.showinfo("Success", "Job saved to Queue.")
 
     def deduct_inventory(self):
         if messagebox.askyesno("Confirm", "Deduct inventory?"):
@@ -812,9 +993,111 @@ class FilamentManagerApp:
         self.build_maintenance_tab_internal()
 
     def build_queue_tab_internal(self):
-        cols = ("Job", "Date"); t = ttk.Treeview(self.content_area, columns=cols, show="headings"); t.pack(fill="both", expand=True)
-        for c in cols: t.heading(c, text=c)
-        for q in self.queue: t.insert("", "end", values=(q.get('job'), q.get('date_added')))
+        # Title
+        ttk.Label(self.content_area, text="Job Queue", font=("Segoe UI", 20, "bold")).pack(pady=10)
+        
+        # Treeview
+        cols = ("Job", "Date"); 
+        self.queue_tree = ttk.Treeview(self.content_area, columns=cols, show="headings")
+        self.queue_tree.pack(fill="both", expand=True)
+        for c in cols: self.queue_tree.heading(c, text=c)
+        
+        # Populate
+        for q in self.queue: 
+            self.queue_tree.insert("", "end", values=(q.get('job'), q.get('date_added')))
+            
+        # --- ACTION BAR (New in v15.9) ---
+        action_frame = ttk.Frame(self.content_area, padding=10)
+        action_frame.pack(fill="x")
+        
+        ttk.Button(action_frame, text="✏️ Edit Details", style="Secondary.TButton", command=self.edit_queue_job).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="🔄 Load to Calculator", style="Primary.TButton", command=self.load_queue_to_calculator).pack(side="left", padx=5)
+        ttk.Button(action_frame, text="❌ Delete Job", style="Danger.TButton", command=self.delete_queue_job).pack(side="right", padx=5)
+
+        # Context Menu
+        self.queue_menu = Menu(self.content_area, tearoff=0)
+        self.queue_menu.add_command(label="Edit", command=self.edit_queue_job)
+        self.queue_menu.add_command(label="Load to Calculator", command=self.load_queue_to_calculator)
+        self.queue_menu.add_separator()
+        self.queue_menu.add_command(label="Delete", command=self.delete_queue_job)
+        
+        self.queue_tree.bind("<Button-3>", self.show_queue_context_menu)
+
+    def show_queue_context_menu(self, event):
+        try:
+            self.queue_tree.selection_set(self.queue_tree.identify_row(event.y))
+            self.queue_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.queue_menu.grab_release()
+
+    def edit_queue_job(self):
+        sel = self.queue_tree.selection()
+        if not sel: return
+        # Get index
+        idx = self.queue_tree.index(sel[0])
+        job = self.queue[idx]
+        
+        # Dialog
+        new_name = simpledialog.askstring("Edit Job", "Job Name:", initialvalue=job.get('job'))
+        if new_name:
+            self.queue[idx]['job'] = new_name
+            self.save_json(self.queue, QUEUE_FILE)
+            self.refresh_queue_list()
+
+    def load_queue_to_calculator(self):
+        sel = self.queue_tree.selection()
+        if not sel: return
+        idx = self.queue_tree.index(sel[0])
+        job = self.queue[idx]
+        
+        # Switch tabs
+        self.show_calculator()
+        
+        # 1. Restore Metadata
+        self.entry_job_name.delete(0, tk.END); self.entry_job_name.insert(0, job.get('job', ''))
+        
+        # 2. Restore Materials (Tricky part)
+        self.clear_job() # Clear current
+        if 'items' in job:
+            self.current_job_filaments = job['items']
+            # Re-populate listbox
+            for item in self.current_job_filaments:
+                spool_name = item.get('spool', {}).get('name', 'Unknown')
+                g = item.get('grams', 0)
+                cost = item.get('cost', 0)
+                self.list_job.insert(tk.END, f"{spool_name}: {g}g (${cost:.2f})")
+        
+        # 3. Restore Parameters (if v15.9+ saved them)
+        if 'params' in job:
+            p = job['params']
+            self.entry_hours.delete(0, tk.END); self.entry_hours.insert(0, str(p.get('hours', 0)))
+            self.entry_mach_rate.delete(0, tk.END); self.entry_mach_rate.insert(0, str(p.get('rate', 0.05)))
+            self.entry_processing.delete(0, tk.END); self.entry_processing.insert(0, str(p.get('labor', 0)))
+            self.entry_markup.delete(0, tk.END); self.entry_markup.insert(0, str(p.get('markup', 2.5)))
+            self.entry_swaps.delete(0, tk.END); self.entry_swaps.insert(0, str(p.get('swaps', 0)))
+            self.entry_swap_fee.delete(0, tk.END); self.entry_swap_fee.insert(0, str(p.get('swap_fee', 0.15)))
+            self.entry_batch_qty.delete(0, tk.END); self.entry_batch_qty.insert(0, str(p.get('batch', 1)))
+            
+            # Remove from queue? (Optional, lets keep it for now)
+            # self.queue.pop(idx); self.save_json(self.queue, QUEUE_FILE)
+            
+            messagebox.showinfo("Loaded", "Job loaded into Calculator.\nYou can now edit and re-calculate.")
+        else:
+            messagebox.showwarning("Partial Load", "This is an older queue item.\nMaterials loaded, but settings (Time/Swaps) were not saved in the old version.\nPlease re-enter them.")
+
+    def delete_queue_job(self):
+        sel = self.queue_tree.selection()
+        if not sel: return
+        idx = self.queue_tree.index(sel[0])
+        if messagebox.askyesno("Delete", "Remove this job from queue?"):
+            self.queue.pop(idx)
+            self.save_json(self.queue, QUEUE_FILE)
+            self.refresh_queue_list()
+
+    def refresh_queue_list(self):
+        for i in self.queue_tree.get_children(): self.queue_tree.delete(i)
+        for q in self.queue:
+            self.queue_tree.insert("", "end", values=(q.get('job'), q.get('date_added')))
 
     def build_maintenance_tab_internal(self):
         cols = ("Task", "Freq", "Last Done"); self.maint_tree = ttk.Treeview(self.content_area, columns=cols, show="headings")
@@ -911,7 +1194,8 @@ class FilamentManagerApp:
         d['sticky_settings'] = {
             "markup": self.entry_markup.get(),
             "labor": self.entry_processing.get(),
-            "rate": self.entry_mach_rate.get()
+            "rate": self.entry_mach_rate.get(),
+            "swap_fee": self.entry_swap_fee.get()
         }
         json.dump(d, open(CONFIG_FILE, 'w'))
 
@@ -1155,26 +1439,76 @@ class FilamentManagerApp:
             self.txt_info.config(state="normal"); self.txt_info.delete("1.0", tk.END); self.txt_info.insert("1.0", self.materials_data[k]); self.txt_info.config(state="disabled")
 
     def configure_printer(self):
-        d = tk.Toplevel(self.root); d.title("Settings"); d.geometry("400x350")
-        ttk.Label(d, text="Printer Settings (Local)", font=("Segoe UI", 12, "bold")).pack(pady=10)
+        d = tk.Toplevel(self.root); d.title("Settings"); d.geometry("400x450")
+        ttk.Label(d, text="Settings & AI Config", font=("Segoe UI", 12, "bold")).pack(pady=10)
+        
         f = ttk.Frame(d, padding=20); f.pack(fill="x")
-        ttk.Label(f, text="IP Address:").pack(anchor="w"); e_ip = ttk.Entry(f); e_ip.pack(fill="x")
+        
+        # Printer
+        ttk.Label(f, text="Printer IP:").pack(anchor="w"); e_ip = ttk.Entry(f); e_ip.pack(fill="x")
         e_ip.insert(0, self.printer_cfg.get('ip',''))
-        ttk.Label(f, text="Access Code:").pack(anchor="w", pady=(10,0)); e_ac = ttk.Entry(f); e_ac.pack(fill="x")
+        ttk.Label(f, text="Access Code:").pack(anchor="w", pady=(5,0)); e_ac = ttk.Entry(f); e_ac.pack(fill="x")
         e_ac.insert(0, self.printer_cfg.get('access_code',''))
-        ttk.Label(f, text="Serial Number:").pack(anchor="w", pady=(10,0)); e_sn_l = ttk.Entry(f); e_sn_l.pack(fill="x")
+        ttk.Label(f, text="Serial:").pack(anchor="w", pady=(5,0)); e_sn_l = ttk.Entry(f); e_sn_l.pack(fill="x")
         e_sn_l.insert(0, self.printer_cfg.get('serial',''))
         
-        # ADDED AI KEY FIELD
-        ttk.Label(f, text="Google AI API Key:").pack(anchor="w", pady=(10,0)); e_ai = ttk.Entry(f, show="*"); e_ai.pack(fill="x")
+        # AI Config
+        ttk.Separator(f).pack(fill="x", pady=20)
+        ttk.Label(f, text="Google AI API Key:", foreground=self.PURPLE_MAIN).pack(anchor="w"); 
+        e_ai = ttk.Entry(f, show="*"); e_ai.pack(fill="x")
         e_ai.insert(0, self.ai_manager.api_key)
+        
+        lbl_model = ttk.Label(f, text=f"Current Model: {self.ai_manager.preferred_model}", font=("Segoe UI", 8), foreground="gray")
+        lbl_model.pack(anchor="w")
+
+        # --- DIAGNOSTIC BUTTON ---
+        def run_diagnostic():
+            key = e_ai.get()
+            if not key: messagebox.showerror("Error", "Enter Key First"); return
+            
+            # Temporary config to test
+            genai.configure(api_key=key)
+            try:
+                models = []
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        models.append(m.name.replace("models/", ""))
+                
+                if not models:
+                    messagebox.showwarning("Warning", "No compatible models found for this key.")
+                    return
+
+                # Ask user to pick
+                diag = tk.Toplevel(d); diag.title("Select Model")
+                ttk.Label(diag, text="Select an available model:", padding=10).pack()
+                box = ttk.Combobox(diag, values=models, state="readonly")
+                box.pack(padx=20, pady=10)
+                if models: box.current(0)
+                
+                def confirm_model():
+                    selection = box.get()
+                    self.ai_manager.save_config(key, selection)
+                    lbl_model.config(text=f"Selected: {selection}")
+                    messagebox.showinfo("Success", f"Locked to model: {selection}")
+                    diag.destroy()
+                    
+                ttk.Button(diag, text="Use Selected", command=confirm_model).pack(pady=10)
+
+            except Exception as e:
+                messagebox.showerror("API Error", f"Failed to list models:\n{e}")
+
+        ttk.Button(f, text="🔍 Test AI & List Models", style="Secondary.TButton", command=run_diagnostic).pack(fill="x", pady=5)
 
         def save_local():
             self.save_printer_config(e_ip.get(), e_ac.get(), e_sn_l.get(), True, "local", "")
-            self.ai_manager.save_api_key(e_ai.get())
+            # Only save key here, model is saved via diag
+            if e_ai.get() != self.ai_manager.api_key:
+                self.ai_manager.save_config(e_ai.get(), self.ai_manager.preferred_model)
+            
             self.start_printer_listener()
             d.destroy()
-        ttk.Button(f, text="Save & Connect", style='Purple.TButton', command=save_local).pack(pady=20)
+            
+        ttk.Button(f, text="Save & Close", style='Purple.TButton', command=save_local).pack(pady=20)
 
 if __name__ == "__main__":
     app = ttk.Window(themename="litera") 
