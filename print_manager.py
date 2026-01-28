@@ -25,6 +25,7 @@ import threading
 import time
 import uuid
 import ssl
+import csv  # <--- Added for Export Feature
 
 # --- OPTIONAL DEPENDENCIES ---
 try:
@@ -56,7 +57,7 @@ except: pass
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v15.0 (AI & Live Ops Update)"
+VERSION = "v15.1 (Smart Shop + Export)"
 
 # ======================================================
 # PATH & SYSTEM LOGIC
@@ -495,6 +496,10 @@ class FilamentManagerApp:
         ttk.Button(act_frame, text="Check Price", style='Secondary.TButton', command=self.check_price).pack(side="left", padx=2)
         ttk.Button(act_frame, text="✅/❌ Benchy", style='Ghost.TButton', command=self.toggle_benchy).pack(side="left", padx=10)
         
+        # --- NEW EXPORT BUTTON ---
+        ttk.Button(act_frame, text="💾 Export CSV", style='Success.TButton', command=self.export_inventory_to_csv).pack(side="left", padx=10)
+        # -------------------------
+
         ttk.Label(act_frame, text="🔍 Filter:", background=self.BG_COLOR).pack(side="left", padx=(20, 5))
         self.entry_search = ttk.Entry(act_frame)
         self.entry_search.pack(side="left", fill="x", expand=True)
@@ -517,6 +522,27 @@ class FilamentManagerApp:
         self.tree.pack(fill="both", expand=True, pady=5)
         
         self.refresh_inventory_list()
+
+    def export_inventory_to_csv(self):
+        fpath = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")], title="Export Inventory")
+        if not fpath: return
+        try:
+            with open(fpath, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["ID", "Name", "Material", "Color", "Weight (g)", "Cost ($)", "Benchy"])
+                for item in self.inventory:
+                    writer.writerow([
+                        item.get('id', ''),
+                        item.get('name', ''),
+                        item.get('material', ''),
+                        item.get('color', ''),
+                        item.get('weight', 0),
+                        item.get('cost', 0),
+                        item.get('benchy', '❌')
+                    ])
+            messagebox.showinfo("Success", f"Inventory exported to:\n{fpath}")
+        except Exception as e:
+            messagebox.showerror("Export Failed", str(e))
 
     def auto_gen_id(self):
         next_id = 1
