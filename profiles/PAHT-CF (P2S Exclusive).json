@@ -1,0 +1,15 @@
+{
+    "name": "CUSTOM_PAHT_CF",
+    "filament_settings_id": ["CUSTOM_PAHT_CF"],
+    "inherits": "Bambu PAHT-CF @BBL X1C",
+    "from": "User",
+    "filament_vendor": ["User Custom"],
+    "nozzle_temperature": ["290"],
+    "nozzle_temperature_range_high": ["300"],
+    "textured_plate_temp": ["100"],
+    "textured_plate_temp_initial_layer": ["100"],
+    "filament_max_volumetric_speed": ["12", "nil"],
+    "fan_max_speed": ["10"],
+    "slow_down_layer_time": ["20"],
+    "version": "2.4.0.10"
+}

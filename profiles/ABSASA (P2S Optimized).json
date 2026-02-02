@@ -1,0 +1,16 @@
+{
+    "name": "CUSTOM_ABS_ASA",
+    "filament_settings_id": ["CUSTOM_ABS_ASA"],
+    "inherits": "Bambu ABS @BBL X1C",
+    "from": "User",
+    "filament_vendor": ["User Custom"],
+    "nozzle_temperature": ["265"],
+    "nozzle_temperature_range_high": ["280"],
+    "textured_plate_temp": ["100"],
+    "textured_plate_temp_initial_layer": ["105"],
+    "during_print_exhaust_fan_speed": ["20"],
+    "filament_max_volumetric_speed": ["18", "nil"],
+    "fan_max_speed": ["80"],
+    "slow_down_layer_time": ["8"],
+    "version": "2.4.0.10"
+}

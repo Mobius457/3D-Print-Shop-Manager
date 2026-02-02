@@ -1,0 +1,15 @@
+{
+    "name": "CUSTOM_PCTG",
+    "filament_settings_id": ["CUSTOM_PCTG"],
+    "inherits": "Generic PETG @BBL P1S",
+    "from": "User",
+    "filament_vendor": ["American Filament"],
+    "nozzle_temperature": ["265"],
+    "nozzle_temperature_range_high": ["275"],
+    "textured_plate_temp": ["80"],
+    "textured_plate_temp_initial_layer": ["85"],
+    "filament_max_volumetric_speed": ["12", "nil"],
+    "fan_max_speed": ["40"],
+    "slow_down_layer_time": ["10"],
+    "version": "2.4.0.10"
+}

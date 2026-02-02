@@ -1,0 +1,61 @@
+{
+    "cool_plate_temp": [
+        "35"
+    ],
+    "cool_plate_temp_initial_layer": [
+        "35"
+    ],
+    "during_print_exhaust_fan_speed": [
+        "0"
+    ],
+    "eng_plate_temp": [
+        "70"
+    ],
+    "eng_plate_temp_initial_layer": [
+        "75"
+    ],
+    "fan_max_speed": [
+        "30"
+    ],
+    "filament_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "filament_max_volumetric_speed": [
+        "8",
+        "nil"
+    ],
+    "filament_settings_id": [
+        "BEST_CLEAR_PETG"
+    ],
+    "filament_vendor": [
+        "User Custom"
+    ],
+    "from": "User",
+    "hot_plate_temp": [
+        "70"
+    ],
+    "hot_plate_temp_initial_layer": [
+        "75"
+    ],
+    "inherits": "Bambu PETG Basic @base",
+    "name": "BEST_CLEAR_PETG",
+    "nozzle_temperature": [
+        "265"
+    ],
+    "nozzle_temperature_range_high": [
+        "270"
+    ],
+    "overhang_fan_speed": [
+        "50"
+    ],
+    "slow_down_layer_time": [
+        "15"
+    ],
+    "textured_plate_temp": [
+        "70"
+    ],
+    "textured_plate_temp_initial_layer": [
+        "75"
+    ],
+    "version": "2.4.0.10"
+}

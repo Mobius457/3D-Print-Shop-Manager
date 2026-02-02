@@ -1,0 +1,64 @@
+{
+    "cool_plate_temp": [
+        "35"
+    ],
+    "cool_plate_temp_initial_layer": [
+        "35"
+    ],
+    "during_print_exhaust_fan_speed": [
+        "30"
+    ],
+    "eng_plate_temp": [
+        "55"
+    ],
+    "eng_plate_temp_initial_layer": [
+        "60"
+    ],
+    "fan_max_speed": [
+        "100"
+    ],
+    "filament_extruder_variant": [
+        "Direct Drive Hardened"
+    ],
+    "filament_max_volumetric_speed": [
+        "8",
+        "nil"
+    ],
+    "filament_settings_id": [
+        "BEST_WOOD_P2S"
+    ],
+    "filament_vendor": [
+        "User Custom"
+    ],
+    "from": "User",
+    "hot_plate_temp": [
+        "55"
+    ],
+    "hot_plate_temp_initial_layer": [
+        "60"
+    ],
+    "inherits": "Generic PLA @BBL X1C",
+    "name": "BEST_WOOD_P2S",
+    "nozzle_temperature": [
+        "215"
+    ],
+    "nozzle_temperature_range_high": [
+        "230"
+    ],
+    "overhang_fan_speed": [
+        "100"
+    ],
+    "slow_down_layer_time": [
+        "10"
+    ],
+    "textured_plate_temp": [
+        "55"
+    ],
+    "textured_plate_temp_initial_layer": [
+        "60"
+    ],
+    "version": "2.4.0.10",
+    "filament_start_gcode": [
+        "; filament start gcode\n{if (bed_temperature[current_extruder] >55)||(bed_temperature_initial_layer[current_extruder] >55)}M106 P3 S180\n{elsif(bed_temperature[current_extruder] >50)||(bed_temperature_initial_layer[current_extruder] >50)}M106 P3 S100\n{endif}"
+    ]
+}

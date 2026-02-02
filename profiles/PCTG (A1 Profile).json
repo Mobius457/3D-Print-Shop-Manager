@@ -1,0 +1,61 @@
+{
+    "cool_plate_temp": [
+        "85"
+    ],
+    "cool_plate_temp_initial_layer": [
+        "90"
+    ],
+    "during_print_exhaust_fan_speed": [
+        "0"
+    ],
+    "eng_plate_temp": [
+        "85"
+    ],
+    "eng_plate_temp_initial_layer": [
+        "90"
+    ],
+    "fan_max_speed": [
+        "30"
+    ],
+    "filament_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "filament_max_volumetric_speed": [
+        "12",
+        "nil"
+    ],
+    "filament_settings_id": [
+        "BEST_PCTG_A1"
+    ],
+    "filament_vendor": [
+        "American Filament"
+    ],
+    "from": "User",
+    "hot_plate_temp": [
+        "85"
+    ],
+    "hot_plate_temp_initial_layer": [
+        "90"
+    ],
+    "inherits": "Generic PETG @BBL A1",
+    "name": "BEST_PCTG_A1",
+    "nozzle_temperature": [
+        "265"
+    ],
+    "nozzle_temperature_range_high": [
+        "275"
+    ],
+    "overhang_fan_speed": [
+        "60"
+    ],
+    "slow_down_layer_time": [
+        "12"
+    ],
+    "textured_plate_temp": [
+        "85"
+    ],
+    "textured_plate_temp_initial_layer": [
+        "90"
+    ],
+    "version": "2.4.0.10"
+}

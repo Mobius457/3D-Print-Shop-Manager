@@ -1,0 +1,15 @@
+{
+    "name": "CUSTOM_TPU_95A",
+    "filament_settings_id": ["CUSTOM_TPU_95A"],
+    "inherits": "Bambu TPU 95A @BBL P1S",
+    "from": "User",
+    "filament_vendor": ["User Custom"],
+    "nozzle_temperature": ["235"],
+    "nozzle_temperature_range_high": ["245"],
+    "textured_plate_temp": ["35"],
+    "textured_plate_temp_initial_layer": ["35"],
+    "filament_max_volumetric_speed": ["3.5", "nil"],
+    "fan_max_speed": ["100"],
+    "slow_down_layer_time": ["5"],
+    "version": "2.4.0.10"
+}

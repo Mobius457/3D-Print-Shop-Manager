@@ -1,0 +1,15 @@
+{
+    "name": "CUSTOM_PLA_Basic",
+    "filament_settings_id": ["CUSTOM_PLA_Basic"],
+    "inherits": "Bambu PLA Basic @BBL A1",
+    "from": "User",
+    "filament_vendor": ["User Custom"],
+    "nozzle_temperature": ["220"],
+    "nozzle_temperature_range_high": ["230"],
+    "textured_plate_temp": ["55"],
+    "textured_plate_temp_initial_layer": ["60"],
+    "filament_max_volumetric_speed": ["21", "nil"],
+    "fan_max_speed": ["100"],
+    "slow_down_layer_time": ["4"],
+    "version": "2.4.0.10"
+}

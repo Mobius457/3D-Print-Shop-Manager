@@ -1,0 +1,15 @@
+{
+    "name": "CUSTOM_PLA_CF",
+    "filament_settings_id": ["CUSTOM_PLA_CF"],
+    "inherits": "Bambu PLA-CF @BBL X1C",
+    "from": "User",
+    "filament_vendor": ["User Custom"],
+    "nozzle_temperature": ["225"],
+    "nozzle_temperature_range_high": ["235"],
+    "textured_plate_temp": ["60"],
+    "textured_plate_temp_initial_layer": ["60"],
+    "filament_max_volumetric_speed": ["18", "nil"],
+    "fan_max_speed": ["100"],
+    "slow_down_layer_time": ["4"],
+    "version": "2.4.0.10"
+}

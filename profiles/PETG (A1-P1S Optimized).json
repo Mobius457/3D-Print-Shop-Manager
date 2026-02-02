@@ -1,0 +1,15 @@
+{
+    "name": "CUSTOM_PETG",
+    "filament_settings_id": ["CUSTOM_PETG"],
+    "inherits": "Bambu PETG Basic @BBL A1",
+    "from": "User",
+    "filament_vendor": ["User Custom"],
+    "nozzle_temperature": ["255"],
+    "nozzle_temperature_range_high": ["265"],
+    "textured_plate_temp": ["70"],
+    "textured_plate_temp_initial_layer": ["75"],
+    "filament_max_volumetric_speed": ["15", "nil"],
+    "fan_max_speed": ["90"],
+    "slow_down_layer_time": ["8"],
+    "version": "2.4.0.10"
+}

@@ -1,0 +1,61 @@
+{
+    "cool_plate_temp": [
+        "35"
+    ],
+    "cool_plate_temp_initial_layer": [
+        "35"
+    ],
+    "during_print_exhaust_fan_speed": [
+        "50"
+    ],
+    "eng_plate_temp": [
+        "60"
+    ],
+    "eng_plate_temp_initial_layer": [
+        "65"
+    ],
+    "fan_max_speed": [
+        "80"
+    ],
+    "filament_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "filament_max_volumetric_speed": [
+        "10",
+        "nil"
+    ],
+    "filament_settings_id": [
+        "BEST_PLA_CLEAR"
+    ],
+    "filament_vendor": [
+        "User Custom"
+    ],
+    "from": "User",
+    "hot_plate_temp": [
+        "60"
+    ],
+    "hot_plate_temp_initial_layer": [
+        "65"
+    ],
+    "inherits": "Bambu PLA Basic @base",
+    "name": "BEST_PLA_CLEAR",
+    "nozzle_temperature": [
+        "230"
+    ],
+    "nozzle_temperature_range_high": [
+        "240"
+    ],
+    "overhang_fan_speed": [
+        "100"
+    ],
+    "slow_down_layer_time": [
+        "10"
+    ],
+    "textured_plate_temp": [
+        "60"
+    ],
+    "textured_plate_temp_initial_layer": [
+        "65"
+    ],
+    "version": "2.4.0.10"
+}
