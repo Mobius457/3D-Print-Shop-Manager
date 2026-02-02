@@ -58,7 +58,7 @@ except: pass
 # ======================================================
 
 APP_NAME = "PrintShopManager"
-VERSION = "v17.0 (Inventory Detail & Context Logic)"
+VERSION = "v17.1 (SOP Documentation Added)"
 
 # ======================================================
 # PATH & SYSTEM LOGIC
@@ -815,7 +815,30 @@ class FilamentManagerApp:
             self.history.append({"date": datetime.now().strftime("%Y-%m-%d"), "job": self.entry_job_name.get(), "sold_for": self.calc_vals['total'], "profit": self.calc_vals['profit'], "cost": self.calc_vals['subtotal']})
             self.save_json(self.history, HISTORY_FILE); self.clear_job()
 
-    def log_failure(self): pass 
+    def log_failure(self):
+        if not self.current_job_filaments: return
+        reason = simpledialog.askstring("Log Failure", "Reason for failure? (e.g., Clog, Adhesion)")
+        if not reason: return
+        
+        if messagebox.askyesno("Confirm Failure", f"Deduct {len(self.current_job_filaments)} spools as WASTE?\n(Revenue will be $0.00)"):
+            # 1. Deduct Inventory
+            for item in self.current_job_filaments:
+                item['spool']['weight'] -= item['grams']
+            self.save_json(self.inventory, DB_FILE)
+            
+            # 2. Add to History as a LOSS
+            fail_entry = {
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "job": f"FAILED: {self.entry_job_name.get()} ({reason})",
+                "sold_for": 0.00,
+                "profit": -self.calc_vals['subtotal'], # Negative profit
+                "cost": self.calc_vals['subtotal']
+            }
+            self.history.append(fail_entry)
+            self.save_json(self.history, HISTORY_FILE)
+            self.clear_job()
+            self.refresh_dashboard_data()
+            messagebox.showinfo("Logged", "Failure logged. Inventory deducted.")
 
     # --- RESTORED HELPERS (With Video Support) ---
     def update_filament_dropdown(self):
@@ -915,7 +938,8 @@ class FilamentManagerApp:
             "PC (Polycarbonate)": "=== PC (Engineering) ===\nNOZZLE: 260-290°C\nBED: 110°C\n\n> STRENGTH: Strongest material.\n> ADHESION: Engineering Plate + Glue Stick essential.\n> ANNEALING: Bake part at 100°C for max strength.",
             "Nylon (PA / PA-CF)": "=== NYLON (PA) ===\nNOZZLE: 260-300°C\nBED: 100°C\n\n> HYGROSCOPIC: Absorbs water in minutes. Print from dry box ONLY.\n> NOZZLE: Hardened Steel required for PA-CF.",
             "PVA / Support": "=== PVA (Water Soluble) ===\nNOZZLE: 210-220°C\nBED: 50°C\nAMS: Yes.\n\n> STORAGE: Must be kept bone dry or it melts in the extruder.\n> USE: Support interface only (expensive).",
-            "Carbon Fiber / Abrasive": "⚠️ ABRASIVE MATERIAL ⚠️\n(PA-CF, PLA-CF, Glow-in-the-Dark, Wood)\n\n> HARDWARE: Hardened Steel Nozzle & Gears REQUIRED.\n> NOZZLE: 0.4mm minimum, 0.6mm recommended to avoid clogs.\n> PATH: Avoid sharp bends in PTFE tubes."
+            "Carbon Fiber / Abrasive": "⚠️ ABRASIVE MATERIAL ⚠️\n(PA-CF, PLA-CF, Glow-in-the-Dark, Wood)\n\n> HARDWARE: Hardened Steel Nozzle & Gears REQUIRED.\n> NOZZLE: 0.4mm minimum, 0.6mm recommended to avoid clogs.\n> PATH: Avoid sharp bends in PTFE tubes.",
+            "Guide: Handling Failures": "=== HOW TO LOG FAILED PRINTS (Option A) ===\n\nPhilosophy: Do NOT bill the customer. DO deduct inventory.\n\n1. Go to 'Calculator'.\n2. Select Spool & Enter Weight (weigh the waste).\n3. Set 'Markup' to 0.\n4. Set 'Labor' to 0.\n5. Click '✅ Deduct'.\n\nRESULT: Inventory is accurate. Revenue is $0 (loss recorded).\n\n(Note: The '⚠️ Fail' button automates this for you if preferred.)"
         }
 
     def init_resource_links(self): 
